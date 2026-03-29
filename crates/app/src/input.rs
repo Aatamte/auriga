@@ -18,6 +18,7 @@ pub fn handle_key(app: &mut App, key: KeyEvent) {
                 }
             }
             KeyCode::Char('b') => app.toggle_pane_mode(),
+            KeyCode::Char('s') => app.widgets.status_bar.toggle_expanded(),
             _ => forward_key(app, key),
         }
     } else {

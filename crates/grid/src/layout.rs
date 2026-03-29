@@ -50,7 +50,7 @@ impl Default for Grid {
             columns: 12,
             rows: vec![
                 Row {
-                    height: Size::Percent("30%".to_string()),
+                    height: Size::Percent("25%".to_string()),
                     cells: vec![
                         Cell {
                             widget: "agent-list".to_string(),
@@ -60,12 +60,12 @@ impl Default for Grid {
                         Cell {
                             widget: "agent-pane".to_string(),
                             span: 10,
-                            rowspan: 2,
+                            rowspan: 3,
                         },
                     ],
                 },
                 Row {
-                    height: Size::Percent("65%".to_string()),
+                    height: Size::Percent("60%".to_string()),
                     cells: vec![Cell {
                         widget: "file-activity".to_string(),
                         span: 2,
@@ -73,10 +73,10 @@ impl Default for Grid {
                     }],
                 },
                 Row {
-                    height: Size::Percent("5%".to_string()),
+                    height: Size::Percent("15%".to_string()),
                     cells: vec![Cell {
                         widget: "status-bar".to_string(),
-                        span: 12,
+                        span: 2,
                         rowspan: 1,
                     }],
                 },
@@ -212,10 +212,11 @@ mod tests {
         assert_eq!(grid.rows[0].cells[0].span, 2);
         assert_eq!(grid.rows[0].cells[1].widget, "agent-pane");
         assert_eq!(grid.rows[0].cells[1].span, 10);
-        assert_eq!(grid.rows[0].cells[1].rowspan, 2);
+        assert_eq!(grid.rows[0].cells[1].rowspan, 3);
         assert_eq!(grid.rows[1].cells[0].widget, "file-activity");
         assert_eq!(grid.rows[1].cells[0].span, 2);
         assert_eq!(grid.rows[2].cells[0].widget, "status-bar");
+        assert_eq!(grid.rows[2].cells[0].span, 2);
     }
 
     #[test]

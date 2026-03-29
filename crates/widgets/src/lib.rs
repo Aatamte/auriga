@@ -46,7 +46,7 @@ impl WidgetRegistry {
             agent_list: AgentListWidget::new(),
             agent_pane: AgentPaneWidget::new(),
             file_activity: FileActivityWidget::new(),
-            status_bar: StatusBarWidget,
+            status_bar: StatusBarWidget::new(),
         }
     }
 
