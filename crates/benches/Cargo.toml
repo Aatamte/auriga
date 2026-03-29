@@ -1,0 +1,21 @@
+[package]
+name = "orchestrator-benches"
+version = "0.1.0"
+edition = "2021"
+
+[dev-dependencies]
+orchestrator-core = { path = "../core" }
+orchestrator-grid = { path = "../grid" }
+orchestrator-widgets = { path = "../widgets" }
+orchestrator-terminal = { path = "../terminal" }
+ratatui = { workspace = true }
+alacritty_terminal = { workspace = true }
+criterion = { workspace = true }
+
+[[bench]]
+name = "render_pipeline"
+harness = false
+
+[[bench]]
+name = "integration"
+harness = false

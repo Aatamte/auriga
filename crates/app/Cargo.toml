@@ -1,0 +1,17 @@
+[package]
+name = "orchestrator-app"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+orchestrator-core = { path = "../core" }
+orchestrator-grid = { path = "../grid" }
+orchestrator-widgets = { path = "../widgets" }
+orchestrator-terminal = { path = "../terminal" }
+orchestrator-pty = { path = "../pty" }
+ratatui = { workspace = true }
+crossterm = { workspace = true }
+anyhow = { workspace = true }
+alacritty_terminal = { workspace = true }
+notify = { workspace = true }
+ignore = { workspace = true }

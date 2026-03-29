@@ -1,0 +1,13 @@
+[project]
+name = "optimized-claude"
+version = "0.1.0"
+description = "Claude Manager TUI — manage multiple Claude CLI instances"
+requires-python = ">=3.9"
+dependencies = []
+
+[tool.ruff]
+target-version = "py39"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP"]

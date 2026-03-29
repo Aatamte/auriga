@@ -1,0 +1,6 @@
+/target
+/claude-manager
+__pycache__
+.venv
+.ruff_cache
+*.pyc

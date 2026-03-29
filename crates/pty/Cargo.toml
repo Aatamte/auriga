@@ -1,0 +1,9 @@
+[package]
+name = "orchestrator-pty"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+orchestrator-core = { path = "../core" }
+portable-pty = { workspace = true }
+anyhow = { workspace = true }

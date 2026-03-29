@@ -1,0 +1,54 @@
+{
+  "autoAcceptTools": {
+    "read": true,
+    "glob": true,
+    "grep": true,
+    "edit": true,
+    "write": true,
+    "bash": {
+      "enabled": true,
+      "patterns": [
+        "cargo build",
+        "cargo test",
+        "cargo run",
+        "cargo clippy",
+        "cargo fmt",
+        "cargo clean",
+        "git status",
+        "git log",
+        "git diff",
+        "git add",
+        "git commit",
+        "git push",
+        "git branch",
+        "git checkout",
+        "ruff",
+        "uv run",
+        "find",
+        "ls",
+        "pwd",
+        "cat",
+        "head",
+        "tail",
+        "wc"
+      ]
+    },
+    "taskCreate": true,
+    "taskUpdate": true,
+    "taskList": true
+  },
+  "requireApprovalFor": {
+    "bash": [
+      "rm -rf",
+      "git reset --hard",
+      "git push --force",
+      "git clean",
+      "destructive"
+    ]
+  },
+  "disabledTools": [
+    "agent",
+    "plan",
+    "explore"
+  ]
+}

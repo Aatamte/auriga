@@ -1,0 +1,10 @@
+[package]
+name = "orchestrator-widgets"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+orchestrator-core = { path = "../core" }
+orchestrator-grid = { path = "../grid" }
+orchestrator-terminal = { path = "../terminal" }
+ratatui = { workspace = true }

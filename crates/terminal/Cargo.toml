@@ -1,0 +1,8 @@
+[package]
+name = "orchestrator-terminal"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+alacritty_terminal = { workspace = true }
+ratatui = { workspace = true }
