@@ -1,7 +1,25 @@
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct AgentId(pub usize);
+pub struct AgentId(pub Uuid);
+
+impl AgentId {
+    pub fn new() -> Self {
+        Self(Uuid::new_v4())
+    }
+
+    /// Create an AgentId from a raw u128. Useful for tests with deterministic IDs.
+    pub fn from_u128(val: u128) -> Self {
+        Self(Uuid::from_u128(val))
+    }
+}
+
+impl Default for AgentId {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum AgentStatus {
@@ -15,6 +33,8 @@ pub struct Agent {
     pub name: String,
     pub provider: String,
     pub status: AgentStatus,
+    pub session_id: Option<String>,
+    pub child_pid: Option<u32>,
 }
 
 impl Agent {
@@ -24,6 +44,8 @@ impl Agent {
             name,
             provider,
             status: AgentStatus::Idle,
+            session_id: None,
+            child_pid: None,
         }
     }
 }
@@ -31,21 +53,18 @@ impl Agent {
 #[derive(Debug)]
 pub struct AgentStore {
     agents: Vec<Agent>,
-    next_id: usize,
 }
 
 impl AgentStore {
     pub fn new() -> Self {
         Self {
             agents: Vec::new(),
-            next_id: 1,
         }
     }
 
     pub fn create(&mut self, provider: &str) -> AgentId {
-        let id = AgentId(self.next_id);
-        let name = format!("{} #{}", provider, self.next_id);
-        self.next_id += 1;
+        let id = AgentId::new();
+        let name = format!("{} #{}", provider, &id.0.simple().to_string()[..8]);
         let agent = Agent::new(id, name, provider.to_string());
         self.agents.push(agent);
         id
@@ -89,21 +108,32 @@ mod tests {
     use super::*;
 
     #[test]
-    fn create_assigns_incrementing_ids() {
+    fn create_assigns_unique_ids() {
         let mut store = AgentStore::new();
         let a = store.create("claude");
         let b = store.create("claude");
-        assert_eq!(a, AgentId(1));
-        assert_eq!(b, AgentId(2));
+        assert_ne!(a, b);
     }
 
     #[test]
-    fn create_sets_name_from_provider() {
+    fn create_sets_name_from_provider_and_hex() {
         let mut store = AgentStore::new();
         let id = store.create("codex");
         let agent = store.get(id).unwrap();
-        assert_eq!(agent.name, "codex #1");
+        assert!(agent.name.starts_with("codex #"));
+        assert_eq!(agent.name.len(), "codex #".len() + 8); // 8 hex chars
         assert_eq!(agent.provider, "codex");
+    }
+
+    #[test]
+    fn create_assigns_unique_names() {
+        let mut store = AgentStore::new();
+        let a = store.create("claude");
+        let b = store.create("claude");
+        assert_ne!(
+            store.get(a).unwrap().name,
+            store.get(b).unwrap().name
+        );
     }
 
     #[test]
@@ -111,6 +141,13 @@ mod tests {
         let mut store = AgentStore::new();
         let id = store.create("claude");
         assert_eq!(store.get(id).unwrap().status, AgentStatus::Idle);
+    }
+
+    #[test]
+    fn new_agent_has_no_session() {
+        let mut store = AgentStore::new();
+        let id = store.create("claude");
+        assert!(store.get(id).unwrap().session_id.is_none());
     }
 
     #[test]
@@ -124,13 +161,13 @@ mod tests {
     #[test]
     fn remove_nonexistent_returns_false() {
         let mut store = AgentStore::new();
-        assert!(!store.remove(AgentId(999)));
+        assert!(!store.remove(AgentId::new()));
     }
 
     #[test]
     fn get_nonexistent_returns_none() {
         let store = AgentStore::new();
-        assert!(store.get(AgentId(1)).is_none());
+        assert!(store.get(AgentId::new()).is_none());
     }
 
     #[test]
@@ -146,7 +183,9 @@ mod tests {
         let mut store = AgentStore::new();
         let a = store.create("claude");
         let b = store.create("codex");
-        assert_eq!(store.ids(), vec![a, b]);
+        let ids = store.ids();
+        assert!(ids.contains(&a));
+        assert!(ids.contains(&b));
     }
 
     #[test]

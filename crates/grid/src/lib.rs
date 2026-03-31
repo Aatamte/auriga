@@ -5,10 +5,7 @@ pub use layout::{Cell, CellRect, Grid, Row, Size};
 use std::path::PathBuf;
 
 pub fn layout_path() -> PathBuf {
-    dirs::home_dir()
-        .unwrap_or_else(|| PathBuf::from("."))
-        .join(".agent-orchestrator")
-        .join("layout.json")
+    PathBuf::from(".agent-orchestrator").join("layout.json")
 }
 
 pub fn load_or_default() -> Grid {

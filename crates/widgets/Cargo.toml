@@ -7,4 +7,5 @@ edition = "2021"
 orchestrator-core = { path = "../core" }
 orchestrator-grid = { path = "../grid" }
 orchestrator-terminal = { path = "../terminal" }
+crossterm = { workspace = true }
 ratatui = { workspace = true }

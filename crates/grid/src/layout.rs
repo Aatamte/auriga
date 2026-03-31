@@ -50,7 +50,7 @@ impl Default for Grid {
             columns: 12,
             rows: vec![
                 Row {
-                    height: Size::Percent("25%".to_string()),
+                    height: Size::Percent("15%".to_string()),
                     cells: vec![
                         Cell {
                             widget: "agent-list".to_string(),
@@ -60,14 +60,30 @@ impl Default for Grid {
                         Cell {
                             widget: "agent-pane".to_string(),
                             span: 10,
-                            rowspan: 3,
+                            rowspan: 5,
                         },
                     ],
                 },
                 Row {
-                    height: Size::Percent("60%".to_string()),
+                    height: Size::Percent("15%".to_string()),
                     cells: vec![Cell {
-                        widget: "file-activity".to_string(),
+                        widget: "token-chart".to_string(),
+                        span: 2,
+                        rowspan: 1,
+                    }],
+                },
+                Row {
+                    height: Size::Percent("20%".to_string()),
+                    cells: vec![Cell {
+                        widget: "recent-activity".to_string(),
+                        span: 2,
+                        rowspan: 1,
+                    }],
+                },
+                Row {
+                    height: Size::Percent("35%".to_string()),
+                    cells: vec![Cell {
+                        widget: "file-tree".to_string(),
                         span: 2,
                         rowspan: 1,
                     }],
@@ -199,10 +215,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn default_grid_has_three_rows() {
+    fn default_grid_has_five_rows() {
         let grid = Grid::default();
         assert_eq!(grid.columns, 12);
-        assert_eq!(grid.rows.len(), 3);
+        assert_eq!(grid.rows.len(), 5);
     }
 
     #[test]
@@ -212,11 +228,15 @@ mod tests {
         assert_eq!(grid.rows[0].cells[0].span, 2);
         assert_eq!(grid.rows[0].cells[1].widget, "agent-pane");
         assert_eq!(grid.rows[0].cells[1].span, 10);
-        assert_eq!(grid.rows[0].cells[1].rowspan, 3);
-        assert_eq!(grid.rows[1].cells[0].widget, "file-activity");
+        assert_eq!(grid.rows[0].cells[1].rowspan, 5);
+        assert_eq!(grid.rows[1].cells[0].widget, "token-chart");
         assert_eq!(grid.rows[1].cells[0].span, 2);
-        assert_eq!(grid.rows[2].cells[0].widget, "status-bar");
+        assert_eq!(grid.rows[2].cells[0].widget, "recent-activity");
         assert_eq!(grid.rows[2].cells[0].span, 2);
+        assert_eq!(grid.rows[3].cells[0].widget, "file-tree");
+        assert_eq!(grid.rows[3].cells[0].span, 2);
+        assert_eq!(grid.rows[4].cells[0].widget, "status-bar");
+        assert_eq!(grid.rows[4].cells[0].span, 2);
     }
 
     #[test]

@@ -6,9 +6,29 @@ pub enum Panel {
     AgentPane,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Page {
+    Home,
+    Settings,
+    Database,
+}
+
+impl Page {
+    pub const ALL: &[Page] = &[Page::Home, Page::Settings, Page::Database];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Page::Home => "Home",
+            Page::Settings => "Settings",
+            Page::Database => "Database",
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct FocusState {
     pub panel: Panel,
+    pub page: Page,
     pub active_agent: Option<AgentId>,
 }
 
@@ -16,6 +36,7 @@ impl FocusState {
     pub fn new() -> Self {
         Self {
             panel: Panel::AgentPane,
+            page: Page::Home,
             active_agent: None,
         }
     }
@@ -49,8 +70,8 @@ mod tests {
     #[test]
     fn set_and_clear_active_agent() {
         let mut focus = FocusState::new();
-        focus.set_active_agent(AgentId(1));
-        assert_eq!(focus.active_agent, Some(AgentId(1)));
+        focus.set_active_agent(AgentId::from_u128(1));
+        assert_eq!(focus.active_agent, Some(AgentId::from_u128(1)));
         focus.clear_active_agent();
         assert!(focus.active_agent.is_none());
     }

@@ -3,7 +3,7 @@ use orchestrator_core::{
     AgentId, AgentStore, FileEntry, FileTree, FocusState, ScrollDirection, Scrollable,
 };
 use orchestrator_grid::Grid;
-use orchestrator_terminal::grid_to_lines;
+// grid_to_lines was replaced by render_term
 use orchestrator_widgets::{RenderContext, WidgetRegistry};
 use ratatui::backend::TestBackend;
 use ratatui::layout::Rect;
@@ -37,12 +37,13 @@ impl Dimensions for TermSize {
     }
 }
 
-fn make_agents(n: usize) -> AgentStore {
+fn make_agents(n: usize) -> (AgentStore, Vec<AgentId>) {
     let mut store = AgentStore::new();
+    let mut ids = Vec::new();
     for _ in 0..n {
-        store.create("claude");
+        ids.push(store.create("claude"));
     }
-    store
+    (store, ids)
 }
 
 fn make_file_tree(n: usize) -> FileTree {
@@ -96,25 +97,7 @@ fn bench_grid_compute_rects(c: &mut Criterion) {
     });
 }
 
-fn bench_grid_to_lines_small(c: &mut Criterion) {
-    let term = make_term_with_output(40, 120);
-
-    c.bench_function("grid_to_lines_40x120", |b| {
-        b.iter(|| {
-            black_box(grid_to_lines(black_box(&term)));
-        });
-    });
-}
-
-fn bench_grid_to_lines_large(c: &mut Criterion) {
-    let term = make_term_with_output(80, 240);
-
-    c.bench_function("grid_to_lines_80x240", |b| {
-        b.iter(|| {
-            black_box(grid_to_lines(black_box(&term)));
-        });
-    });
-}
+// bench_grid_to_lines_small and bench_grid_to_lines_large removed — grid_to_lines was replaced by render_term
 
 fn bench_file_tree_visible_entries(c: &mut Criterion) {
     let mut tree = make_file_tree(500);
@@ -156,10 +139,10 @@ fn bench_scrollable_operations(c: &mut Criterion) {
 }
 
 fn bench_full_render_cycle(c: &mut Criterion) {
-    let agents = make_agents(5);
+    let (agents, agent_ids) = make_agents(5);
     let focus = {
         let mut f = FocusState::new();
-        f.set_active_agent(AgentId(1));
+        f.set_active_agent(agent_ids[0]);
         f
     };
     let mut file_tree = make_file_tree(200);
@@ -180,16 +163,14 @@ fn bench_full_render_cycle(c: &mut Criterion) {
                 .draw(|frame| {
                     let cell_rects = grid.compute_rects(area);
 
-                    let screens = |id: AgentId| -> Option<Vec<ratatui::text::Line<'static>>> {
-                        let idx = id.0.checked_sub(1)?;
-                        terms.get(idx).map(|t| grid_to_lines(t))
-                    };
-
+                    let render_term_fn = |_id: AgentId, _buf: &mut ratatui::buffer::Buffer, _area: Rect| {};
+                    let turns = orchestrator_core::TurnStore::new();
                     let ctx = RenderContext {
                         agents: &agents,
+                        turns: &turns,
                         focus: &focus,
                         file_tree: &file_tree,
-                        screens: &screens,
+                        render_term: &render_term_fn,
                     };
 
                     for cell_rect in &cell_rects {
@@ -206,10 +187,10 @@ fn bench_full_render_cycle(c: &mut Criterion) {
 }
 
 fn bench_full_render_cycle_many_agents(c: &mut Criterion) {
-    let agents = make_agents(20);
+    let (agents, agent_ids) = make_agents(20);
     let focus = {
         let mut f = FocusState::new();
-        f.set_active_agent(AgentId(1));
+        f.set_active_agent(agent_ids[0]);
         f
     };
     let mut file_tree = make_file_tree(1000);
@@ -230,16 +211,14 @@ fn bench_full_render_cycle_many_agents(c: &mut Criterion) {
                 .draw(|frame| {
                     let cell_rects = grid.compute_rects(area);
 
-                    let screens = |id: AgentId| -> Option<Vec<ratatui::text::Line<'static>>> {
-                        let idx = id.0.checked_sub(1)?;
-                        terms.get(idx).map(|t| grid_to_lines(t))
-                    };
-
+                    let render_term_fn = |_id: AgentId, _buf: &mut ratatui::buffer::Buffer, _area: Rect| {};
+                    let turns = orchestrator_core::TurnStore::new();
                     let ctx = RenderContext {
                         agents: &agents,
+                        turns: &turns,
                         focus: &focus,
                         file_tree: &file_tree,
-                        screens: &screens,
+                        render_term: &render_term_fn,
                     };
 
                     for cell_rect in &cell_rects {
@@ -258,8 +237,6 @@ fn bench_full_render_cycle_many_agents(c: &mut Criterion) {
 criterion_group!(
     benches,
     bench_grid_compute_rects,
-    bench_grid_to_lines_small,
-    bench_grid_to_lines_large,
     bench_file_tree_visible_entries,
     bench_file_tree_visible_large,
     bench_scrollable_operations,

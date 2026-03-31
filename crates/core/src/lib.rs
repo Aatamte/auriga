@@ -3,13 +3,15 @@ mod file_activity;
 mod file_tree;
 mod focus;
 mod scrollable;
+mod trace;
 mod turn;
 
 pub use agent::{Agent, AgentId, AgentStatus, AgentStore};
 pub use file_activity::{FileActivity, FileActivityStore};
 pub use file_tree::{FileEntry, FileTree};
-pub use focus::{FocusState, Panel};
+pub use focus::{FocusState, Page, Panel};
 pub use scrollable::{ScrollDirection, Scrollable};
+pub use trace::{Trace, TraceId, TraceStatus, TraceStore};
 pub use turn::{
     AssistantMeta, ContentBlock, ImageSource, ImageSourceType, MessageContent, MessageType,
     StopReason, SystemMeta, TokenUsage, ToolResultContent, Turn, TurnBuilder, TurnId, TurnMeta,

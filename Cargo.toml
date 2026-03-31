@@ -6,6 +6,9 @@ members = [
     "crates/widgets",
     "crates/terminal",
     "crates/pty",
+    "crates/mcp",
+    "crates/claude-log",
+    "crates/storage",
     "crates/app",
     "crates/benches",
 ]
@@ -23,3 +26,6 @@ serde_json = "1"
 dirs = "5"
 notify = "6"
 ignore = "0.4"
+tiny_http = "0.12"
+rusqlite = { version = "0.31", features = ["bundled"] }
+uuid = { version = "1", features = ["v4", "serde"] }

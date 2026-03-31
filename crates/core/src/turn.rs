@@ -106,6 +106,12 @@ pub struct TokenUsage {
     pub cache_read_input_tokens: Option<u64>,
 }
 
+impl TokenUsage {
+    pub fn total(&self) -> u64 {
+        self.input_tokens + self.output_tokens
+    }
+}
+
 /// Embedded image source data.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ImageSource {
@@ -156,7 +162,7 @@ pub enum TurnMeta {
 // ---------------------------------------------------------------------------
 
 /// A single conversation turn — one message in an agent's conversation history.
-#[derive(Debug)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Turn {
     // Internal identity (assigned by TurnStore)
     pub id: TurnId,
@@ -192,7 +198,7 @@ pub struct Turn {
 
 /// Builder for constructing a Turn before handing it to the store.
 /// The store assigns `id`, `agent_id`, and `number`.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct TurnBuilder {
     pub uuid: String,
     pub parent_uuid: Option<String>,
@@ -355,8 +361,8 @@ mod tests {
     use super::*;
     use serde_json::json;
 
-    fn agent(n: usize) -> AgentId {
-        AgentId(n)
+    fn agent(n: u128) -> AgentId {
+        AgentId::from_u128(n)
     }
 
     fn user_builder(uuid: &str) -> TurnBuilder {

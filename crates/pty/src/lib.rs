@@ -9,10 +9,17 @@ pub struct PtyHandle {
     writer: Box<dyn Write + Send>,
     pub reader_rx: mpsc::Receiver<Vec<u8>>,
     master: Box<dyn MasterPty + Send>,
+    child_pid: Option<u32>,
 }
 
 impl PtyHandle {
-    pub fn spawn(command: &str, working_dir: &Path, cols: u16, rows: u16) -> Result<Self> {
+    pub fn spawn(
+        command: &str,
+        working_dir: &Path,
+        cols: u16,
+        rows: u16,
+        env: &[(&str, &str)],
+    ) -> Result<Self> {
         let pty_system = native_pty_system();
         let pair = pty_system.openpty(PtySize {
             rows,
@@ -24,8 +31,12 @@ impl PtyHandle {
         let mut cmd = CommandBuilder::new(command);
         cmd.cwd(working_dir);
         cmd.env("TERM", "xterm-256color");
+        for (key, value) in env {
+            cmd.env(key, value);
+        }
 
-        pair.slave.spawn_command(cmd)?;
+        let child = pair.slave.spawn_command(cmd)?;
+        let child_pid = child.process_id();
 
         let writer = pair.master.take_writer()?;
         let mut reader = pair.master.try_clone_reader()?;
@@ -51,6 +62,7 @@ impl PtyHandle {
             writer,
             reader_rx: rx,
             master: pair.master,
+            child_pid,
         })
     }
 
@@ -62,6 +74,10 @@ impl PtyHandle {
 
     pub fn try_read(&self) -> Option<Vec<u8>> {
         self.reader_rx.try_recv().ok()
+    }
+
+    pub fn child_pid(&self) -> Option<u32> {
+        self.child_pid
     }
 
     pub fn resize(&self, cols: u16, rows: u16) -> Result<()> {

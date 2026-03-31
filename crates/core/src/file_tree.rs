@@ -378,14 +378,14 @@ mod tests {
     #[test]
     fn record_activity_updates_file_and_parents() {
         let mut tree = sample_tree();
-        tree.record_activity(&PathBuf::from("/project/src/main.rs"), Some(AgentId(1)));
+        tree.record_activity(&PathBuf::from("/project/src/main.rs"), Some(AgentId::from_u128(1)));
         let entries = tree.entries();
         let main = entries
             .iter()
             .find(|e| e.display_name() == "main.rs")
             .unwrap();
         assert_eq!(main.modify_count, 1);
-        assert_eq!(main.modified_by, Some(AgentId(1)));
+        assert_eq!(main.modified_by, Some(AgentId::from_u128(1)));
         let src = entries.iter().find(|e| e.display_name() == "src").unwrap();
         assert_eq!(src.modify_count, 1);
     }
@@ -430,8 +430,8 @@ mod tests {
     #[test]
     fn recent_activity_returns_modified_files_sorted() {
         let mut tree = sample_tree();
-        tree.record_activity(&PathBuf::from("/project/src/lib.rs"), Some(AgentId(1)));
-        tree.record_activity(&PathBuf::from("/project/src/main.rs"), Some(AgentId(2)));
+        tree.record_activity(&PathBuf::from("/project/src/lib.rs"), Some(AgentId::from_u128(1)));
+        tree.record_activity(&PathBuf::from("/project/src/main.rs"), Some(AgentId::from_u128(2)));
         let recent = tree.recent_activity(10);
         assert_eq!(recent.len(), 2);
         assert_eq!(recent[0].display_name(), "main.rs");

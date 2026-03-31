@@ -9,6 +9,11 @@ orchestrator-grid = { path = "../grid" }
 orchestrator-widgets = { path = "../widgets" }
 orchestrator-terminal = { path = "../terminal" }
 orchestrator-pty = { path = "../pty" }
+orchestrator-claude-log = { path = "../claude-log" }
+orchestrator-mcp = { path = "../mcp" }
+orchestrator-storage = { path = "../storage" }
+serde = { workspace = true }
+serde_json = { workspace = true }
 ratatui = { workspace = true }
 crossterm = { workspace = true }
 anyhow = { workspace = true }

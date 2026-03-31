@@ -1,7 +1,7 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use orchestrator_core::{AgentId, AgentStore, FileEntry, FileTree, FocusState};
 use orchestrator_grid::Grid;
-use orchestrator_terminal::grid_to_lines;
+// grid_to_lines was replaced by render_term — some benches need updating
 use orchestrator_widgets::{RenderContext, Widget, WidgetRegistry};
 use ratatui::backend::TestBackend;
 use ratatui::layout::Rect;
@@ -35,12 +35,13 @@ impl Dimensions for TermSize {
     }
 }
 
-fn make_agents(n: usize) -> AgentStore {
+fn make_agents(n: usize) -> (AgentStore, Vec<AgentId>) {
     let mut store = AgentStore::new();
+    let mut ids = Vec::new();
     for _ in 0..n {
-        store.create("claude");
+        ids.push(store.create("claude"));
     }
-    store
+    (store, ids)
 }
 
 fn make_file_tree(n: usize) -> FileTree {
@@ -87,10 +88,10 @@ fn make_app_state(
     agent_count: usize,
     file_count: usize,
 ) -> (AgentStore, FocusState, FileTree, Vec<Term<EventProxy>>) {
-    let agents = make_agents(agent_count);
+    let (agents, agent_ids) = make_agents(agent_count);
     let mut focus = FocusState::new();
-    if agent_count > 0 {
-        focus.set_active_agent(AgentId(1));
+    if let Some(&first) = agent_ids.first() {
+        focus.set_active_agent(first);
     }
     let mut file_tree = make_file_tree(file_count);
     file_tree.refresh_caches();
@@ -103,9 +104,9 @@ fn make_app_state(
 // -- Event Dispatch Benchmarks --
 
 fn bench_key_event_dispatch(c: &mut Criterion) {
-    let agents = make_agents(5);
+    let (agents, agent_ids) = make_agents(5);
     let mut focus = FocusState::new();
-    focus.set_active_agent(AgentId(1));
+    focus.set_active_agent(agent_ids[0]);
 
     c.bench_function("key_event_agent_select_cycle", |b| {
         b.iter(|| {
@@ -141,9 +142,9 @@ fn bench_mouse_hit_test(c: &mut Criterion) {
 }
 
 fn bench_widget_click_dispatch(c: &mut Criterion) {
-    let agents = make_agents(20);
+    let (agents, agent_ids) = make_agents(20);
     let mut focus = FocusState::new();
-    focus.set_active_agent(AgentId(1));
+    focus.set_active_agent(agent_ids[0]);
     let mut file_tree = make_file_tree(500);
     file_tree.refresh_caches();
     let terms: Vec<Term<EventProxy>> = (0..20).map(|_| make_term_with_output(40, 120)).collect();
@@ -151,15 +152,14 @@ fn bench_widget_click_dispatch(c: &mut Criterion) {
 
     c.bench_function("widget_click_agent_list_20_agents", |b| {
         b.iter(|| {
-            let screens = |id: AgentId| -> Option<Vec<ratatui::text::Line<'static>>> {
-                let idx = id.0.checked_sub(1)?;
-                terms.get(idx).map(|t| grid_to_lines(t))
-            };
+            let render_term_fn = |_id: AgentId, _buf: &mut ratatui::buffer::Buffer, _area: Rect| {};
+            let turns = orchestrator_core::TurnStore::new();
             let ctx = RenderContext {
                 agents: &agents,
+                turns: &turns,
                 focus: &focus,
                 file_tree: &file_tree,
-                screens: &screens,
+                render_term: &render_term_fn,
             };
             for row in 0..20u16 {
                 black_box(widgets.agent_list.handle_click(row, 0, &ctx));
@@ -196,7 +196,7 @@ fn bench_file_tree_record_activity_churn(c: &mut Criterion) {
                 let file = i % 9;
                 tree.record_activity(
                     &PathBuf::from(format!("/project/dir{}/file{}.rs", dir, file)),
-                    Some(AgentId(1)),
+                    Some(AgentId::from_u128(1)),
                 );
             }
             black_box(&tree);
@@ -211,7 +211,7 @@ fn bench_file_tree_insert_new_files(c: &mut Criterion) {
             for i in 0..50 {
                 tree.record_activity(
                     &PathBuf::from(format!("/project/dir0/new_file_{}.rs", i)),
-                    Some(AgentId(1)),
+                    Some(AgentId::from_u128(1)),
                 );
             }
             black_box(&tree);
@@ -245,36 +245,7 @@ fn bench_pty_output_processing(c: &mut Criterion) {
     });
 }
 
-fn bench_pty_output_then_render(c: &mut Criterion) {
-    c.bench_function("alacritty_process_then_grid_to_lines", |b| {
-        let config = TermConfig {
-            scrolling_history: 1000,
-            ..Default::default()
-        };
-        let size = TermSize {
-            cols: 120,
-            lines: 40,
-        };
-        let mut term = Term::new(config, &size, EventProxy);
-        let mut parser = vte::ansi::Processor::<vte::ansi::StdSyncHandler>::new();
-
-        let chunk: Vec<u8> = (0..100)
-            .flat_map(|i| {
-                format!(
-                    "\x1b[32mline {} \x1b[0m content \x1b[1;34mbold\x1b[0m text\r\n",
-                    i
-                )
-                .into_bytes()
-            })
-            .collect();
-
-        b.iter(|| {
-            parser.advance(&mut term, &chunk);
-            let lines = grid_to_lines(&term);
-            black_box(&lines);
-        });
-    });
-}
+// bench_pty_output_then_render removed — grid_to_lines was replaced by render_term
 
 // -- File Watcher Event Processing --
 
@@ -286,7 +257,7 @@ fn bench_file_event_burst(c: &mut Criterion) {
                 let dir = i / 9;
                 let file = i % 9;
                 let path = PathBuf::from(format!("/project/dir{}/file{}.rs", dir, file));
-                tree.record_activity(&path, Some(AgentId(1)));
+                tree.record_activity(&path, Some(AgentId::from_u128(1)));
             }
             tree.refresh_caches();
             let recent = tree.recent_activity(10);
@@ -300,15 +271,14 @@ fn bench_file_event_burst(c: &mut Criterion) {
 // -- Full Integration --
 
 fn bench_full_event_to_render_cycle(c: &mut Criterion) {
-    let (agents, _focus, file_tree, terms) = make_app_state(6, 500);
+    let (agents, focus, file_tree, terms) = make_app_state(6, 500);
     let grid = Grid::default();
     let mut widgets = WidgetRegistry::new();
     let area = Rect::new(0, 0, 200, 60);
 
     c.bench_function("full_event_to_render_6_agents_500_files", |b| {
         b.iter(|| {
-            let mut focus_copy = FocusState::new();
-            focus_copy.set_active_agent(AgentId(3));
+            let focus_copy = &focus;
 
             let cell_rects = grid.compute_rects(area);
 
@@ -325,16 +295,14 @@ fn bench_full_event_to_render_cycle(c: &mut Criterion) {
 
             terminal
                 .draw(|frame| {
-                    let screens = |id: AgentId| -> Option<Vec<ratatui::text::Line<'static>>> {
-                        let idx = id.0.checked_sub(1)?;
-                        terms.get(idx).map(|t| grid_to_lines(t))
-                    };
-
+                    let render_term_fn = |_id: AgentId, _buf: &mut ratatui::buffer::Buffer, _area: Rect| {};
+                    let turns = orchestrator_core::TurnStore::new();
                     let ctx = RenderContext {
                         agents: &agents,
-                        focus: &focus_copy,
+                        turns: &turns,
+                        focus: focus_copy,
                         file_tree: &file_tree,
-                        screens: &screens,
+                        render_term: &render_term_fn,
                     };
 
                     for cell_rect in &cell_rects {
@@ -365,16 +333,14 @@ fn bench_worst_case_render(c: &mut Criterion) {
                 .draw(|frame| {
                     let cell_rects = grid.compute_rects(area);
 
-                    let screens = |id: AgentId| -> Option<Vec<ratatui::text::Line<'static>>> {
-                        let idx = id.0.checked_sub(1)?;
-                        terms.get(idx).map(|t| grid_to_lines(t))
-                    };
-
+                    let render_term_fn = |_id: AgentId, _buf: &mut ratatui::buffer::Buffer, _area: Rect| {};
+                    let turns = orchestrator_core::TurnStore::new();
                     let ctx = RenderContext {
                         agents: &agents,
+                        turns: &turns,
                         focus: &focus,
                         file_tree: &file_tree,
-                        screens: &screens,
+                        render_term: &render_term_fn,
                     };
 
                     for cell_rect in &cell_rects {
@@ -399,7 +365,6 @@ criterion_group!(
     bench_file_tree_record_activity_churn,
     bench_file_tree_insert_new_files,
     bench_pty_output_processing,
-    bench_pty_output_then_render,
     bench_file_event_burst,
     bench_full_event_to_render_cycle,
     bench_worst_case_render,

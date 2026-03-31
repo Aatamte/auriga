@@ -108,10 +108,10 @@ mod tests {
     #[test]
     fn record_updates_agent() {
         let mut store = FileActivityStore::new();
-        store.record(PathBuf::from("src/main.rs"), Some(AgentId(1)));
-        store.record(PathBuf::from("src/main.rs"), Some(AgentId(2)));
+        store.record(PathBuf::from("src/main.rs"), Some(AgentId::from_u128(1)));
+        store.record(PathBuf::from("src/main.rs"), Some(AgentId::from_u128(2)));
         let sorted = store.sorted();
-        assert_eq!(sorted[0].modified_by, Some(AgentId(2)));
+        assert_eq!(sorted[0].modified_by, Some(AgentId::from_u128(2)));
     }
 
     #[test]
@@ -129,12 +129,12 @@ mod tests {
         store.rename(
             &PathBuf::from("old.rs"),
             PathBuf::from("new.rs"),
-            Some(AgentId(1)),
+            Some(AgentId::from_u128(1)),
         );
         assert_eq!(store.count(), 1);
         let sorted = store.sorted();
         assert_eq!(sorted[0].path, PathBuf::from("new.rs"));
-        assert_eq!(sorted[0].modified_by, Some(AgentId(1)));
+        assert_eq!(sorted[0].modified_by, Some(AgentId::from_u128(1)));
     }
 
     #[test]

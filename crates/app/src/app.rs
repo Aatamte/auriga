@@ -5,16 +5,27 @@ use alacritty_terminal::term::{Config as TermConfig, Term};
 use alacritty_terminal::vte;
 use anyhow::Result;
 use crossterm::event::Event;
-use orchestrator_core::{AgentId, AgentStore, FileTree, FocusState};
+use orchestrator_claude_log::{to_turn_builder, ClaudeWatchEvent, ClaudeWatchHandle};
+use orchestrator_core::{AgentId, AgentStore, FileTree, FocusState, TraceStore, TurnStore};
+use ratatui::layout::Rect;
 use orchestrator_grid::CellRect;
+use orchestrator_mcp::{AgentInfo, McpEvent, McpRequest, McpResponse};
 use orchestrator_pty::PtyHandle;
-use orchestrator_widgets::{WidgetAction, WidgetRegistry};
+use orchestrator_storage::{Database, StorageHandle};
+use orchestrator_widgets::{
+    DbMetadataView, QueryResultView, SettingsField, TableInfoView, WidgetAction, WidgetRegistry,
+};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::mpsc;
 
 pub struct App {
     pub agents: AgentStore,
+    pub turns: TurnStore,
+    pub traces: TraceStore,
+    pub storage: StorageHandle,
+    pub db_reader: Database,
+    pub db_path: PathBuf,
     pub focus: FocusState,
     pub file_tree: FileTree,
     pub grid: orchestrator_grid::Grid,
@@ -26,7 +37,14 @@ pub struct App {
     pub file_rx: mpsc::Receiver<FileEvent>,
     pub diff_tx: mpsc::Sender<PathBuf>,
     pub diff_rx: mpsc::Receiver<DiffResult>,
+    pub mcp_rx: mpsc::Receiver<McpEvent>,
+    pub claude_watcher: Option<ClaudeWatchHandle>,
+    /// Maps session_id → agent_id for Claude log association.
+    pub session_map: HashMap<String, AgentId>,
+    /// Maps child PID → agent_id for session discovery.
+    pub pid_map: HashMap<u32, AgentId>,
     pub last_cell_rects: Vec<CellRect>,
+    pub last_nav_rect: Rect,
     pub running: bool,
 }
 
@@ -36,17 +54,31 @@ impl App {
         file_rx: mpsc::Receiver<FileEvent>,
         diff_tx: mpsc::Sender<PathBuf>,
         diff_rx: mpsc::Receiver<DiffResult>,
+        mcp_rx: mpsc::Receiver<McpEvent>,
+        storage: StorageHandle,
+        db_reader: Database,
+        db_path: PathBuf,
+        claude_watcher: Option<ClaudeWatchHandle>,
+        config: &crate::config::Config,
     ) -> Self {
         let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
         let mut file_tree = FileTree::new(cwd.clone());
         file_tree.set_entries(walk_directory(&cwd));
 
+        let mut widgets = WidgetRegistry::new();
+        widgets.settings_page.set_fields(config_to_fields(config));
+
         Self {
             agents: AgentStore::new(),
+            turns: TurnStore::new(),
+            traces: TraceStore::new(),
+            storage,
+            db_reader,
+            db_path,
             focus: FocusState::new(),
             file_tree,
             grid: orchestrator_grid::load_or_default(),
-            widgets: WidgetRegistry::new(),
+            widgets,
             ptys: HashMap::new(),
             terms: HashMap::new(),
             vte_parsers: HashMap::new(),
@@ -54,7 +86,12 @@ impl App {
             file_rx,
             diff_tx,
             diff_rx,
+            mcp_rx,
+            claude_watcher,
+            session_map: HashMap::new(),
+            pid_map: HashMap::new(),
             last_cell_rects: Vec::new(),
+            last_nav_rect: Rect::default(),
             running: true,
         }
     }
@@ -73,9 +110,18 @@ impl App {
 
     pub fn spawn_agent(&mut self, provider: &str) -> Result<AgentId> {
         let id = self.agents.create(provider);
+        let agent_name = self.agents.get(id).expect("agent just created").name.clone();
         let cwd = std::env::current_dir()?;
         let (cols, rows) = self.pane_size();
-        let pty = PtyHandle::spawn(provider, &cwd, cols, rows)?;
+        let pty = PtyHandle::spawn(provider, &cwd, cols, rows, &[
+            ("ORCHESTRATOR_AGENT_NAME", &agent_name),
+        ])?;
+        if let Some(pid) = pty.child_pid() {
+            if let Some(agent) = self.agents.get_mut(id) {
+                agent.child_pid = Some(pid);
+            }
+            self.pid_map.insert(pid, id);
+        }
         let term_config = TermConfig {
             scrolling_history: 10_000,
             ..Default::default()
@@ -97,6 +143,16 @@ impl App {
     }
 
     pub fn kill_agent(&mut self, id: AgentId) {
+        // Abort any active traces and flush them to persistence
+        let now = chrono_now();
+        while let Some(trace) = self.traces.active_trace(id) {
+            let trace_id = trace.id;
+            self.traces.abort(trace_id, now.clone());
+        }
+        self.flush_finished_traces(id);
+        self.traces.remove_agent_traces(id);
+        self.turns.remove_agent_turns(id);
+
         self.ptys.remove(&id);
         self.terms.remove(&id);
         self.vte_parsers.remove(&id);
@@ -108,6 +164,46 @@ impl App {
                 Some(&next) => self.focus.set_active_agent(next),
                 None => self.focus.clear_active_agent(),
             }
+        }
+    }
+
+    /// Flush all finished traces for an agent to the persistence layer.
+    fn flush_finished_traces(&mut self, agent_id: AgentId) {
+        let finished = self.traces.take_finished();
+        for trace in finished {
+            if trace.agent_id == agent_id {
+                let turns: Vec<_> = self
+                    .turns
+                    .turns_for(agent_id)
+                    .into_iter()
+                    .filter(|t| t.session_id.as_deref() == Some(&trace.session_id))
+                    .cloned()
+                    .collect();
+                self.storage.save_trace(trace, turns);
+            }
+        }
+    }
+
+    /// Flush all remaining traces on shutdown.
+    pub fn flush_all_traces(&mut self) {
+        let now = chrono_now();
+        let agent_ids = self.agents.ids();
+        for agent_id in &agent_ids {
+            while let Some(trace) = self.traces.active_trace(*agent_id) {
+                let trace_id = trace.id;
+                self.traces.abort(trace_id, now.clone());
+            }
+        }
+        let finished = self.traces.take_finished();
+        for trace in finished {
+            let turns: Vec<_> = self
+                .turns
+                .turns_for(trace.agent_id)
+                .into_iter()
+                .filter(|t| t.session_id.as_deref() == Some(&trace.session_id))
+                .cloned()
+                .collect();
+            self.storage.save_trace(trace, turns);
         }
     }
 
@@ -159,6 +255,166 @@ impl App {
         while let Ok(result) = self.diff_rx.try_recv() {
             self.file_tree
                 .update_diff(&result.path, result.added, result.removed);
+        }
+    }
+
+    pub fn poll_claude_logs(&mut self) {
+        let Some(ref watcher) = self.claude_watcher else {
+            return;
+        };
+        while let Some(event) = watcher.try_recv() {
+            match event {
+                ClaudeWatchEvent::SessionDiscovered(info) => {
+                    // Map PID → session_id → agent_id
+                    if let Some(&agent_id) = self.pid_map.get(&info.pid) {
+                        self.session_map
+                            .insert(info.session_id.clone(), agent_id);
+                        if let Some(agent) = self.agents.get_mut(agent_id) {
+                            agent.session_id = Some(info.session_id);
+                        }
+                    }
+                }
+                ClaudeWatchEvent::LogEntry(entry) => {
+                    // Skip entries we can't map to an agent
+                    let Some(&agent_id) = self.session_map.get(&entry.session_id) else {
+                        continue;
+                    };
+
+                    // Skip non-message entries (file-history-snapshot, last-prompt, etc.)
+                    let Some(builder) = to_turn_builder(&entry) else {
+                        continue;
+                    };
+
+                    // Check for duplicate by UUID
+                    if self.turns.find_by_uuid(&entry.uuid).is_some() {
+                        continue;
+                    }
+
+                    // Insert turn
+                    let turn_id = self.turns.insert(agent_id, builder);
+
+                    // Ensure trace exists for this session
+                    if self
+                        .traces
+                        .find_by_session(agent_id, &entry.session_id)
+                        .is_none()
+                    {
+                        let provider = self
+                            .agents
+                            .get(agent_id)
+                            .map(|a| a.provider.clone())
+                            .unwrap_or_default();
+                        self.traces.create(
+                            agent_id,
+                            entry.session_id.clone(),
+                            provider,
+                            entry.timestamp.clone(),
+                        );
+                    }
+
+                    // Update trace counters
+                    if let Some(trace) = self.traces.active_trace_mut(agent_id) {
+                        trace.turn_count += 1;
+                        // Accumulate token usage from assistant turns
+                        if let Some(turn) = self.turns.get(turn_id) {
+                            if let orchestrator_core::TurnMeta::Assistant(ref meta) = turn.meta {
+                                if let Some(ref usage) = meta.usage {
+                                    trace.token_usage.input_tokens += usage.input_tokens;
+                                    trace.token_usage.output_tokens += usage.output_tokens;
+                                    if let Some(v) = usage.cache_creation_input_tokens {
+                                        *trace
+                                            .token_usage
+                                            .cache_creation_input_tokens
+                                            .get_or_insert(0) += v;
+                                    }
+                                    if let Some(v) = usage.cache_read_input_tokens {
+                                        *trace
+                                            .token_usage
+                                            .cache_read_input_tokens
+                                            .get_or_insert(0) += v;
+                                    }
+                                }
+                                if trace.model.is_none() {
+                                    trace.model = meta.model.clone();
+                                }
+                            }
+                        }
+                    }
+
+                    // Immediately flush to SQLite
+                    if let Some(trace) = self.traces.active_trace(agent_id) {
+                        let trace_clone = trace.clone();
+                        let turns: Vec<_> = self
+                            .turns
+                            .turns_for(agent_id)
+                            .into_iter()
+                            .filter(|t| t.session_id.as_deref() == Some(&entry.session_id))
+                            .cloned()
+                            .collect();
+                        self.storage.save_trace(trace_clone, turns);
+                    }
+                }
+            }
+        }
+    }
+
+    pub fn poll_mcp_requests(&mut self) {
+        while let Ok(event) = self.mcp_rx.try_recv() {
+            match event.request {
+                McpRequest::ListAgents => {
+                    let agents: Vec<AgentInfo> = self
+                        .agents
+                        .list()
+                        .iter()
+                        .map(|a| AgentInfo {
+                            id: a.id.0.to_string(),
+                            name: a.name.clone(),
+                            status: format!("{:?}", a.status),
+                        })
+                        .collect();
+                    let _ = event.response_tx.send(McpResponse::Agents(agents));
+                }
+                McpRequest::SendMessage {
+                    from_agent_name,
+                    to_agent_name,
+                    message,
+                } => {
+                    let target = self
+                        .agents
+                        .list()
+                        .iter()
+                        .find(|a| a.name == to_agent_name)
+                        .map(|a| a.id);
+
+                    match target {
+                        Some(id) => {
+                            if let Some(pty) = self.ptys.get_mut(&id) {
+                                let data =
+                                    format!("[Message from {}]: {}\r", from_agent_name, message);
+                                if let Err(e) = pty.write_input(data.as_bytes()) {
+                                    let _ = event.response_tx.send(McpResponse::Error(
+                                        format!("Write failed: {}", e),
+                                    ));
+                                } else {
+                                    let _ =
+                                        event.response_tx.send(McpResponse::MessageSent);
+                                }
+                            } else {
+                                let _ = event.response_tx.send(McpResponse::Error(format!(
+                                    "Agent '{}' has no active PTY",
+                                    to_agent_name
+                                )));
+                            }
+                        }
+                        None => {
+                            let _ = event.response_tx.send(McpResponse::Error(format!(
+                                "No agent named '{}'",
+                                to_agent_name
+                            )));
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -229,6 +485,29 @@ impl App {
                     .agent_pane
                     .set_mode(orchestrator_widgets::agent_pane::PaneMode::Grid);
             }
+            WidgetAction::NavigateTo(page) => {
+                self.focus.page = page;
+            }
+            WidgetAction::RefreshDatabase => {
+                self.refresh_database();
+            }
+            WidgetAction::QueryTable { table, limit, offset } => {
+                if let Ok(result) = self.db_reader.query_table(&table, limit, offset) {
+                    self.widgets.database_page.set_rows(
+                        QueryResultView {
+                            columns: result.columns,
+                            rows: result.rows,
+                            total_rows: result.total_rows,
+                        },
+                    );
+                }
+            }
+            WidgetAction::SaveConfig => {
+                let config = fields_to_config(&self.widgets.settings_page.field_values());
+                if crate::config::save(&config).is_ok() {
+                    self.widgets.settings_page.mark_saved();
+                }
+            }
         }
     }
 
@@ -243,4 +522,68 @@ impl App {
         };
         self.widgets.agent_pane.set_mode(new_mode);
     }
+
+    pub fn refresh_database(&mut self) {
+        if let Ok(meta) = self.db_reader.metadata(&self.db_path) {
+            let widget_tables: Vec<TableInfoView> = meta
+                .tables
+                .iter()
+                .map(|t| TableInfoView {
+                    name: t.name.clone(),
+                    row_count: t.row_count,
+                })
+                .collect();
+            self.widgets.database_page.set_metadata(
+                DbMetadataView {
+                    file_size_bytes: meta.file_size_bytes,
+                    total_rows: meta.total_rows,
+                    tables: widget_tables,
+                },
+            );
+            // Auto-query the first/selected table
+            if let Some((table, limit, offset)) = self.widgets.database_page.current_query() {
+                if let Ok(result) = self.db_reader.query_table(&table, limit, offset) {
+                    self.widgets.database_page.set_rows(
+                        QueryResultView {
+                            columns: result.columns,
+                            rows: result.rows,
+                            total_rows: result.total_rows,
+                        },
+                    );
+                }
+            }
+        }
+    }
+}
+
+fn config_to_fields(config: &crate::config::Config) -> Vec<SettingsField> {
+    vec![SettingsField {
+        label: "MCP Port",
+        key: "mcp_port",
+        value: config.mcp_port.to_string(),
+        description: "Port for the MCP JSON-RPC server",
+    }]
+}
+
+fn fields_to_config(values: &[(&str, &str)]) -> crate::config::Config {
+    let mut config = crate::config::Config::default();
+    for &(key, val) in values {
+        if key == "mcp_port" {
+            if let Ok(port) = val.parse::<u16>() {
+                config.mcp_port = port;
+            }
+        }
+    }
+    config
+}
+
+/// Simple UTC timestamp without pulling in the chrono crate.
+fn chrono_now() -> String {
+    use std::time::SystemTime;
+    let dur = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap_or_default();
+    let secs = dur.as_secs();
+    // Good enough ISO 8601 for trace timestamps
+    format!("{}Z", secs)
 }

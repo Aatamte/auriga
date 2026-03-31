@@ -1,32 +1,65 @@
 use crate::app::App;
 use alacritty_terminal::grid::Scroll;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
-use orchestrator_core::ScrollDirection;
-use orchestrator_widgets::RenderContext;
+use orchestrator_core::{Page, ScrollDirection};
+use orchestrator_widgets::{RenderContext, WidgetAction};
 use ratatui::layout::Rect;
 
 pub fn handle_key(app: &mut App, key: KeyEvent) {
+    // Global ctrl shortcuts always handled
     if key.modifiers.contains(KeyModifiers::CONTROL) {
         match key.code {
-            KeyCode::Char('q') => app.running = false,
+            KeyCode::Char('q') => {
+                app.running = false;
+                return;
+            }
             KeyCode::Char('n') => {
                 let _ = app.spawn_agent("claude");
+                return;
             }
             KeyCode::Char('w') => {
                 if let Some(id) = app.focus.active_agent {
                     app.kill_agent(id);
                 }
+                return;
             }
-            KeyCode::Char('b') => app.toggle_pane_mode(),
-            KeyCode::Char('s') => app.widgets.status_bar.toggle_expanded(),
-            _ => forward_key(app, key),
+            KeyCode::Char('b') => {
+                app.toggle_pane_mode();
+                return;
+            }
+            _ => {}
         }
-    } else {
-        forward_key(app, key);
+    }
+
+    // Page-specific key handling
+    match app.focus.page {
+        Page::Settings => {
+            if let Some(action) = app.widgets.settings_page.handle_key(key) {
+                app.handle_widget_action(action);
+            }
+        }
+        Page::Home => forward_key(app, key),
+        Page::Database => {
+            if let Some(action) = app.widgets.database_page.handle_key(key) {
+                app.handle_widget_action(action);
+            }
+        }
     }
 }
 
 pub fn handle_mouse(app: &mut App, mouse: MouseEvent) {
+    if let MouseEventKind::Down(MouseButton::Left) = mouse.kind {
+        // Check tab bar clicks
+        let nav = app.last_nav_rect;
+        if mouse.row >= nav.y && mouse.row < nav.y + nav.height {
+            if let Some(page) = app.widgets.nav_bar.handle_click(mouse.column, nav) {
+                app.handle_widget_action(WidgetAction::NavigateTo(page));
+            }
+            return;
+        }
+    }
+
+    // Normal widget dispatch
     let hit = app.hit_test(mouse.column, mouse.row);
     let Some((widget_name, local_row, local_col)) = hit else {
         return;
@@ -43,6 +76,7 @@ pub fn handle_mouse(app: &mut App, mouse: MouseEvent) {
                 };
             let ctx = RenderContext {
                 agents: &app.agents,
+                turns: &app.turns,
                 focus: &app.focus,
                 file_tree: &app.file_tree,
                 render_term: &term_renderer,

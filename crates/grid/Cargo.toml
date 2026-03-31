@@ -7,4 +7,4 @@ edition = "2021"
 serde = { workspace = true }
 serde_json = { workspace = true }
 ratatui = { workspace = true }
-dirs = { workspace = true }
+
