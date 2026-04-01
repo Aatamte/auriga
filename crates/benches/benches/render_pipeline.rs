@@ -163,7 +163,8 @@ fn bench_full_render_cycle(c: &mut Criterion) {
                 .draw(|frame| {
                     let cell_rects = grid.compute_rects(area);
 
-                    let render_term_fn = |_id: AgentId, _buf: &mut ratatui::buffer::Buffer, _area: Rect| {};
+                    let render_term_fn =
+                        |_id: AgentId, _buf: &mut ratatui::buffer::Buffer, _area: Rect| {};
                     let turns = orchestrator_core::TurnStore::new();
                     let ctx = RenderContext {
                         agents: &agents,
@@ -211,7 +212,8 @@ fn bench_full_render_cycle_many_agents(c: &mut Criterion) {
                 .draw(|frame| {
                     let cell_rects = grid.compute_rects(area);
 
-                    let render_term_fn = |_id: AgentId, _buf: &mut ratatui::buffer::Buffer, _area: Rect| {};
+                    let render_term_fn =
+                        |_id: AgentId, _buf: &mut ratatui::buffer::Buffer, _area: Rect| {};
                     let turns = orchestrator_core::TurnStore::new();
                     let ctx = RenderContext {
                         agents: &agents,

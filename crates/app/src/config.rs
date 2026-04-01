@@ -82,7 +82,10 @@ mod tests {
 
     #[test]
     fn config_round_trips_through_json() {
-        let config = Config { mcp_port: 9000, disabled_classifiers: vec![] };
+        let config = Config {
+            mcp_port: 9000,
+            disabled_classifiers: vec![],
+        };
         let json = serde_json::to_string(&config).unwrap();
         let parsed: Config = serde_json::from_str(&json).unwrap();
         assert_eq!(parsed.mcp_port, 9000);

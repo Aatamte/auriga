@@ -196,18 +196,15 @@ impl Widget for ClassifiersPage {
             ));
         } else {
             // Column header
-            lines.push(Line::from(vec![
-                Span::styled(
-                    "  Classifier            Trace       Timestamp                 Payload",
-                    Style::default()
-                        .fg(Color::White)
-                        .add_modifier(Modifier::BOLD),
-                ),
-            ]));
+            lines.push(Line::from(vec![Span::styled(
+                "  Classifier            Trace       Timestamp                 Payload",
+                Style::default()
+                    .fg(Color::White)
+                    .add_modifier(Modifier::BOLD),
+            )]));
 
             for (i, r) in self.results.iter().enumerate() {
-                let is_selected =
-                    self.section == Section::Results && self.selected_result == i;
+                let is_selected = self.section == Section::Results && self.selected_result == i;
                 let style = if is_selected {
                     Style::default().fg(Color::Cyan)
                 } else {
@@ -231,7 +228,10 @@ impl Widget for ClassifiersPage {
                     Span::raw("  "),
                     Span::styled(format!("{:<20}", r.classifier_name), style),
                     Span::styled(format!("  {:<10}", trace_short), style),
-                    Span::styled(format!("  {:<24}", r.timestamp), Style::default().fg(Color::DarkGray)),
+                    Span::styled(
+                        format!("  {:<24}", r.timestamp),
+                        Style::default().fg(Color::DarkGray),
+                    ),
                     Span::styled(payload_display, style),
                 ]));
             }
@@ -328,7 +328,9 @@ mod tests {
         page.set_classifiers(sample_classifiers());
 
         let action = page.handle_key(make_key(KeyCode::Enter));
-        assert!(matches!(action, Some(WidgetAction::ToggleClassifier(name)) if name == "loop-detector"));
+        assert!(
+            matches!(action, Some(WidgetAction::ToggleClassifier(name)) if name == "loop-detector")
+        );
     }
 
     #[test]
@@ -338,7 +340,9 @@ mod tests {
         page.handle_key(make_key(KeyCode::Down)); // select second
 
         let action = page.handle_key(make_key(KeyCode::Char(' ')));
-        assert!(matches!(action, Some(WidgetAction::ToggleClassifier(name)) if name == "cost-alert"));
+        assert!(
+            matches!(action, Some(WidgetAction::ToggleClassifier(name)) if name == "cost-alert")
+        );
     }
 
     #[test]

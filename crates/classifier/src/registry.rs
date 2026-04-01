@@ -43,7 +43,11 @@ impl ClassifierRegistry {
 
     /// Enable or disable a classifier by name. Returns false if not found.
     pub fn set_enabled(&mut self, name: &str, enabled: bool) -> bool {
-        if let Some(entry) = self.entries.iter_mut().find(|e| e.classifier.name() == name) {
+        if let Some(entry) = self
+            .entries
+            .iter_mut()
+            .find(|e| e.classifier.name() == name)
+        {
             entry.enabled = enabled;
             true
         } else {
@@ -71,11 +75,7 @@ impl ClassifierRegistry {
     }
 
     /// Run enabled classifiers whose trigger matches incremental events.
-    pub fn run_incremental(
-        &self,
-        trace: &Trace,
-        turns: &[Turn],
-    ) -> Vec<ClassificationResult> {
+    pub fn run_incremental(&self, trace: &Trace, turns: &[Turn]) -> Vec<ClassificationResult> {
         let mut results = Vec::new();
         for entry in &self.entries {
             if entry.enabled && entry.classifier.trigger().runs_incremental() {
@@ -86,11 +86,7 @@ impl ClassifierRegistry {
     }
 
     /// Run enabled classifiers whose trigger matches on-complete events.
-    pub fn run_on_complete(
-        &self,
-        trace: &Trace,
-        turns: &[Turn],
-    ) -> Vec<ClassificationResult> {
+    pub fn run_on_complete(&self, trace: &Trace, turns: &[Turn]) -> Vec<ClassificationResult> {
         let mut results = Vec::new();
         for entry in &self.entries {
             if entry.enabled && entry.classifier.trigger().runs_on_complete() {

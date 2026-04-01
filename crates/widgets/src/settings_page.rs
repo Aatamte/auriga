@@ -44,7 +44,10 @@ impl SettingsPage {
 
     /// Get current field values as (key, value) pairs.
     pub fn field_values(&self) -> Vec<(&str, &str)> {
-        self.fields.iter().map(|f| (f.key, f.value.as_str())).collect()
+        self.fields
+            .iter()
+            .map(|f| (f.key, f.value.as_str()))
+            .collect()
     }
 
     /// Handle a key event. Returns a WidgetAction if one should be dispatched.
@@ -160,7 +163,9 @@ impl Widget for SettingsPage {
 
             // Label
             let label_style = if is_selected {
-                Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD)
             } else {
                 Style::default().fg(Color::White)
             };
@@ -175,7 +180,9 @@ impl Widget for SettingsPage {
             };
 
             let value_style = if is_editing {
-                Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD)
             } else if is_selected {
                 Style::default().fg(Color::Cyan)
             } else {
@@ -203,7 +210,9 @@ impl Widget for SettingsPage {
                 Span::raw("  "),
                 Span::styled(
                     "[Save] Ctrl+S",
-                    Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
+                    Style::default()
+                        .fg(Color::Yellow)
+                        .add_modifier(Modifier::BOLD),
                 ),
                 Span::styled("  unsaved changes", Style::default().fg(Color::DarkGray)),
             ]));

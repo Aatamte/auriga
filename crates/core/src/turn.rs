@@ -304,10 +304,7 @@ impl TurnStore {
 
     /// Total number of turns for an agent.
     pub fn agent_turn_count(&self, agent_id: AgentId) -> usize {
-        self.turns
-            .iter()
-            .filter(|t| t.agent_id == agent_id)
-            .count()
+        self.turns.iter().filter(|t| t.agent_id == agent_id).count()
     }
 
     /// Total number of turns across all agents.

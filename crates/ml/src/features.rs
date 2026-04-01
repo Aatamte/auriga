@@ -267,13 +267,11 @@ mod tests {
                 cwd: None,
                 git_branch: None,
                 role: TurnRole::Assistant,
-                content: MessageContent::Blocks(vec![
-                    ContentBlock::ToolUse {
-                        id: "t2".into(),
-                        name: "edit_file".into(),
-                        input: serde_json::json!({"path": "main.rs"}),
-                    },
-                ]),
+                content: MessageContent::Blocks(vec![ContentBlock::ToolUse {
+                    id: "t2".into(),
+                    name: "edit_file".into(),
+                    input: serde_json::json!({"path": "main.rs"}),
+                }]),
                 meta: TurnMeta::Assistant(AssistantMeta {
                     model: Some("claude-opus-4-6".into()),
                     stop_reason: Some(StopReason::EndTurn),
@@ -319,8 +317,8 @@ mod tests {
         assert_eq!(features[10], 2.0); // unique_tool_count
         assert_eq!(features[11], 250.0); // avg_output_per_assistant (500/2)
         assert_eq!(features[12], 0.0); // error_rate
-        // text_length_total: "Fix the bug" (11) + "Let me analyze" (14) + "I'll fix it" (11) = 36
-        // (ToolResult content is ToolResultContent, not counted as text blocks)
+                                       // text_length_total: "Fix the bug" (11) + "Let me analyze" (14) + "I'll fix it" (11) = 36
+                                       // (ToolResult content is ToolResultContent, not counted as text blocks)
         assert_eq!(features[13], 36.0);
     }
 

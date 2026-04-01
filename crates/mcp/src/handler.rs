@@ -81,19 +81,22 @@ fn handle_tools_list(req: &Request) -> Response {
 }
 
 fn handle_tools_call(req: &Request, event_tx: &mpsc::Sender<McpEvent>) -> Response {
-    let tool_name = req.params.get("name").and_then(|v| v.as_str()).unwrap_or("");
+    let tool_name = req
+        .params
+        .get("name")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
     let arguments = req.params.get("arguments").cloned().unwrap_or(json!({}));
 
     let mcp_request = match tool_name {
         TOOL_LIST_AGENTS => McpRequest::ListAgents,
         TOOL_SEND_MESSAGE => {
-            let from_agent_name =
-                match arguments.get("from_agent_name").and_then(|v| v.as_str()) {
-                    Some(name) => name.to_string(),
-                    None => {
-                        return tool_error(req, "Missing required parameter: from_agent_name");
-                    }
-                };
+            let from_agent_name = match arguments.get("from_agent_name").and_then(|v| v.as_str()) {
+                Some(name) => name.to_string(),
+                None => {
+                    return tool_error(req, "Missing required parameter: from_agent_name");
+                }
+            };
             let to_agent_name = match arguments.get("to_agent_name").and_then(|v| v.as_str()) {
                 Some(name) => name.to_string(),
                 None => {
@@ -133,9 +136,7 @@ fn handle_tools_call(req: &Request, event_tx: &mpsc::Sender<McpEvent>) -> Respon
             let text = serde_json::to_string_pretty(&agents).unwrap_or_default();
             tool_success(req, &text)
         }
-        Ok(McpResponse::MessageSent) => {
-            tool_success(req, "Message delivered to agent.")
-        }
+        Ok(McpResponse::MessageSent) => tool_success(req, "Message delivered to agent."),
         Ok(McpResponse::Error(msg)) => tool_error(req, &msg),
         Err(_) => tool_error(req, "Failed to get response from orchestrator"),
     }
@@ -243,7 +244,10 @@ mod tests {
     #[test]
     fn tools_call_list_agents_sends_event() {
         let (tx, rx) = mpsc::channel();
-        let req = make_request("tools/call", json!({"name": "list_agents", "arguments": {}}));
+        let req = make_request(
+            "tools/call",
+            json!({"name": "list_agents", "arguments": {}}),
+        );
 
         let handle = std::thread::spawn(move || handle_request(&req, &tx));
 

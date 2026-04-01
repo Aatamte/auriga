@@ -57,9 +57,7 @@ pub struct AgentStore {
 
 impl AgentStore {
     pub fn new() -> Self {
-        Self {
-            agents: Vec::new(),
-        }
+        Self { agents: Vec::new() }
     }
 
     pub fn create(&mut self, provider: &str) -> AgentId {
@@ -130,10 +128,7 @@ mod tests {
         let mut store = AgentStore::new();
         let a = store.create("claude");
         let b = store.create("claude");
-        assert_ne!(
-            store.get(a).unwrap().name,
-            store.get(b).unwrap().name
-        );
+        assert_ne!(store.get(a).unwrap().name, store.get(b).unwrap().name);
     }
 
     #[test]

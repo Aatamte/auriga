@@ -295,7 +295,8 @@ fn bench_full_event_to_render_cycle(c: &mut Criterion) {
 
             terminal
                 .draw(|frame| {
-                    let render_term_fn = |_id: AgentId, _buf: &mut ratatui::buffer::Buffer, _area: Rect| {};
+                    let render_term_fn =
+                        |_id: AgentId, _buf: &mut ratatui::buffer::Buffer, _area: Rect| {};
                     let turns = orchestrator_core::TurnStore::new();
                     let ctx = RenderContext {
                         agents: &agents,
@@ -333,7 +334,8 @@ fn bench_worst_case_render(c: &mut Criterion) {
                 .draw(|frame| {
                     let cell_rects = grid.compute_rects(area);
 
-                    let render_term_fn = |_id: AgentId, _buf: &mut ratatui::buffer::Buffer, _area: Rect| {};
+                    let render_term_fn =
+                        |_id: AgentId, _buf: &mut ratatui::buffer::Buffer, _area: Rect| {};
                     let turns = orchestrator_core::TurnStore::new();
                     let ctx = RenderContext {
                         agents: &agents,

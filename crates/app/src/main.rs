@@ -76,8 +76,16 @@ fn main() -> Result<()> {
     let mut terminal = Terminal::new(backend)?;
 
     let mut app = App::new(
-        input_rx, file_rx, diff_tx, diff_rx, mcp.rx, storage, db_reader, db_path,
-        claude_watcher, &config,
+        input_rx,
+        file_rx,
+        diff_tx,
+        diff_rx,
+        mcp.rx,
+        storage,
+        db_reader,
+        db_path,
+        claude_watcher,
+        &config,
     );
 
     // Pre-compute layout rects so pane_size() works before first render
@@ -162,7 +170,9 @@ fn main() -> Result<()> {
                     app.last_cell_rects = Vec::new();
                 }
                 Page::Classifiers => {
-                    app.widgets.classifiers_page.render(frame, content_area, &ctx);
+                    app.widgets
+                        .classifiers_page
+                        .render(frame, content_area, &ctx);
                     app.last_cell_rects = Vec::new();
                 }
             }

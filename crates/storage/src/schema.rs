@@ -87,7 +87,10 @@ fn get_version(conn: &Connection) -> i64 {
 
 fn set_version(conn: &Connection, version: i64) -> rusqlite::Result<()> {
     conn.execute("DELETE FROM schema_version", [])?;
-    conn.execute("INSERT INTO schema_version (version) VALUES (?1)", [version])?;
+    conn.execute(
+        "INSERT INTO schema_version (version) VALUES (?1)",
+        [version],
+    )?;
     Ok(())
 }
 

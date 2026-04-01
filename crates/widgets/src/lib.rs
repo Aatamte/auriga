@@ -10,8 +10,8 @@ mod status_bar;
 mod token_chart;
 
 pub use agent_list::AgentListWidget;
-pub use classifiers_page::{ClassificationResultView, ClassifierStatusView, ClassifiersPage};
 pub use agent_pane::AgentPaneWidget;
+pub use classifiers_page::{ClassificationResultView, ClassifierStatusView, ClassifiersPage};
 pub use database_page::{
     DatabasePage, DbMetadata as DbMetadataView, QueryResult as QueryResultView,
     TableInfo as TableInfoView,
@@ -23,7 +23,9 @@ pub use settings_page::{SettingsField, SettingsPage};
 pub use status_bar::StatusBarWidget;
 pub use token_chart::TokenChartWidget;
 
-use orchestrator_core::{AgentId, AgentStore, FileTree, FocusState, Page, ScrollDirection, TraceStore, TurnStore};
+use orchestrator_core::{
+    AgentId, AgentStore, FileTree, FocusState, Page, ScrollDirection, TraceStore, TurnStore,
+};
 use ratatui::layout::Rect;
 use ratatui::style::Color;
 use ratatui::Frame;
@@ -63,7 +65,11 @@ pub enum WidgetAction {
     NavigateTo(Page),
     SaveConfig,
     RefreshDatabase,
-    QueryTable { table: String, limit: u64, offset: u64 },
+    QueryTable {
+        table: String,
+        limit: u64,
+        offset: u64,
+    },
     ToggleClassifier(String),
 }
 

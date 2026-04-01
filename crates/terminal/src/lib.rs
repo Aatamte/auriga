@@ -134,13 +134,31 @@ mod tests {
 
     #[test]
     fn convert_bright_colors() {
-        assert_eq!(convert_named_color(NamedColor::BrightBlack), Color::DarkGray);
+        assert_eq!(
+            convert_named_color(NamedColor::BrightBlack),
+            Color::DarkGray
+        );
         assert_eq!(convert_named_color(NamedColor::BrightRed), Color::LightRed);
-        assert_eq!(convert_named_color(NamedColor::BrightGreen), Color::LightGreen);
-        assert_eq!(convert_named_color(NamedColor::BrightYellow), Color::LightYellow);
-        assert_eq!(convert_named_color(NamedColor::BrightBlue), Color::LightBlue);
-        assert_eq!(convert_named_color(NamedColor::BrightMagenta), Color::LightMagenta);
-        assert_eq!(convert_named_color(NamedColor::BrightCyan), Color::LightCyan);
+        assert_eq!(
+            convert_named_color(NamedColor::BrightGreen),
+            Color::LightGreen
+        );
+        assert_eq!(
+            convert_named_color(NamedColor::BrightYellow),
+            Color::LightYellow
+        );
+        assert_eq!(
+            convert_named_color(NamedColor::BrightBlue),
+            Color::LightBlue
+        );
+        assert_eq!(
+            convert_named_color(NamedColor::BrightMagenta),
+            Color::LightMagenta
+        );
+        assert_eq!(
+            convert_named_color(NamedColor::BrightCyan),
+            Color::LightCyan
+        );
         assert_eq!(convert_named_color(NamedColor::BrightWhite), Color::White);
     }
 
@@ -152,7 +170,11 @@ mod tests {
 
     #[test]
     fn convert_spec_color() {
-        let rgb = alacritty_terminal::vte::ansi::Rgb { r: 255, g: 128, b: 0 };
+        let rgb = alacritty_terminal::vte::ansi::Rgb {
+            r: 255,
+            g: 128,
+            b: 0,
+        };
         assert_eq!(convert_color(AnsiColor::Spec(rgb)), Color::Rgb(255, 128, 0));
     }
 
@@ -165,10 +187,7 @@ mod tests {
 
     #[test]
     fn convert_named_via_convert_color() {
-        assert_eq!(
-            convert_color(AnsiColor::Named(NamedColor::Red)),
-            Color::Red
-        );
+        assert_eq!(convert_color(AnsiColor::Named(NamedColor::Red)), Color::Red);
     }
 
     #[test]

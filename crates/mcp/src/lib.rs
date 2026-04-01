@@ -60,11 +60,8 @@ pub fn start_mcp_server(port: u16) -> anyhow::Result<McpServer> {
                 let resp = tiny_http::Response::from_string("Method not allowed")
                     .with_status_code(405)
                     .with_header(
-                        tiny_http::Header::from_bytes(
-                            &b"Content-Type"[..],
-                            &b"text/plain"[..],
-                        )
-                        .unwrap(),
+                        tiny_http::Header::from_bytes(&b"Content-Type"[..], &b"text/plain"[..])
+                            .unwrap(),
                     );
                 let _ = request.respond(resp);
                 continue;
@@ -73,8 +70,7 @@ pub fn start_mcp_server(port: u16) -> anyhow::Result<McpServer> {
             // Read body
             let mut body = String::new();
             if request.as_reader().read_to_string(&mut body).is_err() {
-                let resp =
-                    tiny_http::Response::from_string("Bad request").with_status_code(400);
+                let resp = tiny_http::Response::from_string("Bad request").with_status_code(400);
                 let _ = request.respond(resp);
                 continue;
             }
@@ -83,8 +79,7 @@ pub fn start_mcp_server(port: u16) -> anyhow::Result<McpServer> {
             let rpc_request = match serde_json::from_str::<jsonrpc::Request>(&body) {
                 Ok(r) => r,
                 Err(_) => {
-                    let err =
-                        jsonrpc::Response::error(None, -32700, "Parse error".to_string());
+                    let err = jsonrpc::Response::error(None, -32700, "Parse error".to_string());
                     let json = serde_json::to_string(&err).unwrap_or_default();
                     let resp = tiny_http::Response::from_string(&json).with_header(
                         tiny_http::Header::from_bytes(

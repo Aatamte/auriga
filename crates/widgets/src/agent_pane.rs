@@ -66,10 +66,7 @@ impl AgentPaneWidget {
         ]);
 
         // Model name (top-right)
-        let model_str = ctx
-            .traces
-            .active_trace(id)
-            .and_then(|t| t.model.as_deref());
+        let model_str = ctx.traces.active_trace(id).and_then(|t| t.model.as_deref());
         let model_short = shorten_model(model_str);
 
         // Turn count (bottom-left)

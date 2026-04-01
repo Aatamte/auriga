@@ -5,10 +5,9 @@ use alacritty_terminal::term::{Config as TermConfig, Term};
 use alacritty_terminal::vte;
 use anyhow::Result;
 use crossterm::event::Event;
-use orchestrator_claude_log::{to_turn_builder, ClaudeWatchEvent, ClaudeWatchHandle};
 use orchestrator_classifier::ClassifierRegistry;
+use orchestrator_claude_log::{to_turn_builder, ClaudeWatchEvent, ClaudeWatchHandle};
 use orchestrator_core::{AgentId, AgentStore, FileTree, FocusState, TraceStore, TurnStore};
-use ratatui::layout::Rect;
 use orchestrator_grid::CellRect;
 use orchestrator_mcp::{AgentInfo, McpEvent, McpRequest, McpResponse};
 use orchestrator_pty::PtyHandle;
@@ -16,6 +15,7 @@ use orchestrator_storage::{Database, StorageHandle};
 use orchestrator_widgets::{
     DbMetadataView, QueryResultView, SettingsField, TableInfoView, WidgetAction, WidgetRegistry,
 };
+use ratatui::layout::Rect;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::mpsc;
@@ -113,12 +113,21 @@ impl App {
 
     pub fn spawn_agent(&mut self, provider: &str) -> Result<AgentId> {
         let id = self.agents.create(provider);
-        let agent_name = self.agents.get(id).expect("agent just created").name.clone();
+        let agent_name = self
+            .agents
+            .get(id)
+            .expect("agent just created")
+            .name
+            .clone();
         let cwd = std::env::current_dir()?;
         let (cols, rows) = self.pane_size();
-        let pty = PtyHandle::spawn(provider, &cwd, cols, rows, &[
-            ("ORCHESTRATOR_AGENT_NAME", &agent_name),
-        ])?;
+        let pty = PtyHandle::spawn(
+            provider,
+            &cwd,
+            cols,
+            rows,
+            &[("ORCHESTRATOR_AGENT_NAME", &agent_name)],
+        )?;
         if let Some(pid) = pty.child_pid() {
             if let Some(agent) = self.agents.get_mut(id) {
                 agent.child_pid = Some(pid);
@@ -278,8 +287,7 @@ impl App {
                 ClaudeWatchEvent::SessionDiscovered(info) => {
                     // Map PID → session_id → agent_id
                     if let Some(&agent_id) = self.pid_map.get(&info.pid) {
-                        self.session_map
-                            .insert(info.session_id.clone(), agent_id);
+                        self.session_map.insert(info.session_id.clone(), agent_id);
                         if let Some(agent) = self.agents.get_mut(agent_id) {
                             agent.session_id = Some(info.session_id);
                         }
@@ -409,12 +417,11 @@ impl App {
                                 let data =
                                     format!("[Message from {}]: {}\r", from_agent_name, message);
                                 if let Err(e) = pty.write_input(data.as_bytes()) {
-                                    let _ = event.response_tx.send(McpResponse::Error(
-                                        format!("Write failed: {}", e),
-                                    ));
+                                    let _ = event
+                                        .response_tx
+                                        .send(McpResponse::Error(format!("Write failed: {}", e)));
                                 } else {
-                                    let _ =
-                                        event.response_tx.send(McpResponse::MessageSent);
+                                    let _ = event.response_tx.send(McpResponse::MessageSent);
                                 }
                             } else {
                                 let _ = event.response_tx.send(McpResponse::Error(format!(
@@ -508,15 +515,17 @@ impl App {
             WidgetAction::RefreshDatabase => {
                 self.refresh_database();
             }
-            WidgetAction::QueryTable { table, limit, offset } => {
+            WidgetAction::QueryTable {
+                table,
+                limit,
+                offset,
+            } => {
                 if let Ok(result) = self.db_reader.query_table(&table, limit, offset) {
-                    self.widgets.database_page.set_rows(
-                        QueryResultView {
-                            columns: result.columns,
-                            rows: result.rows,
-                            total_rows: result.total_rows,
-                        },
-                    );
+                    self.widgets.database_page.set_rows(QueryResultView {
+                        columns: result.columns,
+                        rows: result.rows,
+                        total_rows: result.total_rows,
+                    });
                 }
             }
             WidgetAction::SaveConfig => {
@@ -527,7 +536,8 @@ impl App {
             }
             WidgetAction::ToggleClassifier(name) => {
                 let currently_enabled = self.classifier_registry.is_enabled(&name);
-                self.classifier_registry.set_enabled(&name, !currently_enabled);
+                self.classifier_registry
+                    .set_enabled(&name, !currently_enabled);
                 // Persist to config
                 let mut config = fields_to_config(&self.widgets.settings_page.field_values());
                 config.disabled_classifiers = self
@@ -564,23 +574,19 @@ impl App {
                     row_count: t.row_count,
                 })
                 .collect();
-            self.widgets.database_page.set_metadata(
-                DbMetadataView {
-                    file_size_bytes: meta.file_size_bytes,
-                    total_rows: meta.total_rows,
-                    tables: widget_tables,
-                },
-            );
+            self.widgets.database_page.set_metadata(DbMetadataView {
+                file_size_bytes: meta.file_size_bytes,
+                total_rows: meta.total_rows,
+                tables: widget_tables,
+            });
             // Auto-query the first/selected table
             if let Some((table, limit, offset)) = self.widgets.database_page.current_query() {
                 if let Ok(result) = self.db_reader.query_table(&table, limit, offset) {
-                    self.widgets.database_page.set_rows(
-                        QueryResultView {
-                            columns: result.columns,
-                            rows: result.rows,
-                            total_rows: result.total_rows,
-                        },
-                    );
+                    self.widgets.database_page.set_rows(QueryResultView {
+                        columns: result.columns,
+                        rows: result.rows,
+                        total_rows: result.total_rows,
+                    });
                 }
             }
         }

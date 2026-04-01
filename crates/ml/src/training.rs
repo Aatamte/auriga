@@ -83,8 +83,7 @@ pub fn train_decision_tree(
         encoded_labels.push(idx);
     }
 
-    let features =
-        Array2::from_shape_vec((n_samples, n_features), features_flat)?;
+    let features = Array2::from_shape_vec((n_samples, n_features), features_flat)?;
     let targets = Array1::from_vec(encoded_labels);
 
     let dataset = DatasetBase::new(features, targets);

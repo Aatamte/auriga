@@ -25,9 +25,7 @@ pub struct QueryResult {
 impl Database {
     /// Get database metadata: file size, table list with row counts.
     pub fn metadata(&self, db_path: &Path) -> anyhow::Result<DbMetadata> {
-        let file_size_bytes = std::fs::metadata(db_path)
-            .map(|m| m.len())
-            .unwrap_or(0);
+        let file_size_bytes = std::fs::metadata(db_path).map(|m| m.len()).unwrap_or(0);
 
         let mut stmt = self.conn.prepare(
             "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name",
@@ -57,12 +55,7 @@ impl Database {
     }
 
     /// Query rows from a table with pagination. Returns column names and string values.
-    pub fn query_table(
-        &self,
-        table: &str,
-        limit: u64,
-        offset: u64,
-    ) -> anyhow::Result<QueryResult> {
+    pub fn query_table(&self, table: &str, limit: u64, offset: u64) -> anyhow::Result<QueryResult> {
         // Validate table name exists to prevent SQL injection
         let exists: bool = self.conn.query_row(
             "SELECT COUNT(*) > 0 FROM sqlite_master WHERE type='table' AND name = ?1",
@@ -83,11 +76,7 @@ impl Database {
         );
         let mut stmt = self.conn.prepare(&query_sql)?;
 
-        let columns: Vec<String> = stmt
-            .column_names()
-            .iter()
-            .map(|s| s.to_string())
-            .collect();
+        let columns: Vec<String> = stmt.column_names().iter().map(|s| s.to_string()).collect();
 
         let col_count = columns.len();
         let rows: Vec<Vec<String>> = stmt

@@ -24,9 +24,9 @@ impl Database {
         &self,
         classifier_name: &str,
     ) -> anyhow::Result<Vec<(TraceId, String)>> {
-        let mut stmt = self.conn.prepare(
-            "SELECT trace_id, label FROM training_labels WHERE classifier_name = ?1",
-        )?;
+        let mut stmt = self
+            .conn
+            .prepare("SELECT trace_id, label FROM training_labels WHERE classifier_name = ?1")?;
 
         let results = stmt
             .query_map(params![classifier_name], |row| {
@@ -63,10 +63,7 @@ impl Database {
         Ok(())
     }
 
-    pub fn load_latest_model(
-        &self,
-        classifier_name: &str,
-    ) -> anyhow::Result<Option<SavedModel>> {
+    pub fn load_latest_model(&self, classifier_name: &str) -> anyhow::Result<Option<SavedModel>> {
         let mut stmt = self.conn.prepare(
             "SELECT id, classifier_name, version, created_at, feature_names, model_data, accuracy \
              FROM models WHERE classifier_name = ?1 ORDER BY version DESC LIMIT 1",
@@ -91,8 +88,7 @@ impl Database {
             ))
         })?;
 
-        let Some(Ok((id, name, version, created_at, fn_json, model_data, accuracy))) =
-            rows.next()
+        let Some(Ok((id, name, version, created_at, fn_json, model_data, accuracy))) = rows.next()
         else {
             return Ok(None);
         };
@@ -110,10 +106,7 @@ impl Database {
         }))
     }
 
-    pub fn list_models(
-        &self,
-        classifier_name: &str,
-    ) -> anyhow::Result<Vec<SavedModel>> {
+    pub fn list_models(&self, classifier_name: &str) -> anyhow::Result<Vec<SavedModel>> {
         let mut stmt = self.conn.prepare(
             "SELECT id, classifier_name, version, created_at, feature_names, model_data, accuracy \
              FROM models WHERE classifier_name = ?1 ORDER BY version DESC",
@@ -139,18 +132,20 @@ impl Database {
                 ))
             })?
             .filter_map(|r| r.ok())
-            .filter_map(|(id, name, version, created_at, fn_json, model_data, accuracy)| {
-                let feature_names: Vec<String> = serde_json::from_str(&fn_json).ok()?;
-                Some(SavedModel {
-                    id,
-                    classifier_name: name,
-                    version,
-                    created_at,
-                    feature_names,
-                    model_data,
-                    accuracy,
-                })
-            })
+            .filter_map(
+                |(id, name, version, created_at, fn_json, model_data, accuracy)| {
+                    let feature_names: Vec<String> = serde_json::from_str(&fn_json).ok()?;
+                    Some(SavedModel {
+                        id,
+                        classifier_name: name,
+                        version,
+                        created_at,
+                        feature_names,
+                        model_data,
+                        accuracy,
+                    })
+                },
+            )
             .collect();
 
         Ok(results)
@@ -186,7 +181,8 @@ mod tests {
         };
         db.save_trace(&trace, &[]).unwrap();
 
-        db.save_training_label(trace_id, "test-clf", "success").unwrap();
+        db.save_training_label(trace_id, "test-clf", "success")
+            .unwrap();
 
         let labels = db.load_training_labels("test-clf").unwrap();
         assert_eq!(labels.len(), 1);

@@ -40,7 +40,13 @@ impl Database {
                 let timestamp: String = row.get(3)?;
                 let payload_str: String = row.get(4)?;
 
-                Ok((id_str, trace_id_str, classifier_name, timestamp, payload_str))
+                Ok((
+                    id_str,
+                    trace_id_str,
+                    classifier_name,
+                    timestamp,
+                    payload_str,
+                ))
             })?
             .filter_map(|r| r.ok())
             .filter_map(|(id_str, trace_id_str, name, ts, payload_str)| {
@@ -77,7 +83,13 @@ impl Database {
                 let timestamp: String = row.get(3)?;
                 let payload_str: String = row.get(4)?;
 
-                Ok((id_str, trace_id_str, classifier_name, timestamp, payload_str))
+                Ok((
+                    id_str,
+                    trace_id_str,
+                    classifier_name,
+                    timestamp,
+                    payload_str,
+                ))
             })?
             .filter_map(|r| r.ok())
             .filter_map(|(id_str, trace_id_str, name, ts, payload_str)| {

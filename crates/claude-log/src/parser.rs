@@ -137,10 +137,7 @@ fn parse_content(message: Option<&Value>) -> MessageContent {
     match content {
         Some(Value::String(s)) => MessageContent::Text(s.clone()),
         Some(Value::Array(arr)) => {
-            let blocks: Vec<ContentBlock> = arr
-                .iter()
-                .filter_map(parse_content_block)
-                .collect();
+            let blocks: Vec<ContentBlock> = arr.iter().filter_map(parse_content_block).collect();
             if blocks.is_empty() {
                 MessageContent::Text(String::new())
             } else {
@@ -181,10 +178,8 @@ fn parse_content_block(v: &Value) -> Option<ContentBlock> {
             let content = match v.get("content") {
                 Some(Value::String(s)) => ToolResultContent::Text(s.clone()),
                 Some(Value::Array(arr)) => {
-                    let blocks: Vec<ContentBlock> = arr
-                        .iter()
-                        .filter_map(parse_content_block)
-                        .collect();
+                    let blocks: Vec<ContentBlock> =
+                        arr.iter().filter_map(parse_content_block).collect();
                     ToolResultContent::Blocks(blocks)
                 }
                 _ => ToolResultContent::Text(String::new()),
@@ -222,7 +217,10 @@ fn parse_assistant_meta(message: Option<&Value>) -> AssistantMeta {
         };
     };
 
-    let model = msg.get("model").and_then(|m| m.as_str()).map(|s| s.to_string());
+    let model = msg
+        .get("model")
+        .and_then(|m| m.as_str())
+        .map(|s| s.to_string());
 
     let stop_reason = msg
         .get("stop_reason")
@@ -284,7 +282,8 @@ mod tests {
 
     const ASSISTANT_LINE: &str = r#"{"parentUuid":"u1","type":"assistant","message":{"role":"assistant","model":"claude-opus-4-6","content":[{"type":"text","text":"Hi there!"}],"stop_reason":"end_turn","usage":{"input_tokens":100,"output_tokens":50,"cache_creation_input_tokens":10}},"uuid":"a1","timestamp":"2026-03-31T10:00:01Z","sessionId":"sess-1","requestId":"req-1"}"#;
 
-    const SNAPSHOT_LINE: &str = r#"{"type":"file-history-snapshot","messageId":"u1","snapshot":{}}"#;
+    const SNAPSHOT_LINE: &str =
+        r#"{"type":"file-history-snapshot","messageId":"u1","snapshot":{}}"#;
 
     #[test]
     fn parse_user_entry() {

@@ -70,10 +70,7 @@ impl DatabasePage {
     }
 
     fn table_count(&self) -> usize {
-        self.metadata
-            .as_ref()
-            .map(|m| m.tables.len())
-            .unwrap_or(0)
+        self.metadata.as_ref().map(|m| m.tables.len()).unwrap_or(0)
     }
 
     fn total_pages(&self) -> u64 {
@@ -182,13 +179,24 @@ impl Widget for DatabasePage {
         if let Some(ref meta) = self.metadata {
             let size_str = format_size(meta.file_size_bytes);
             lines.push(Line::from(vec![
-                Span::styled("  orchestrator.db", Style::default().fg(Color::White).add_modifier(Modifier::BOLD)),
+                Span::styled(
+                    "  orchestrator.db",
+                    Style::default()
+                        .fg(Color::White)
+                        .add_modifier(Modifier::BOLD),
+                ),
                 Span::styled("  │  ", Style::default().fg(Color::DarkGray)),
                 Span::styled(size_str, Style::default().fg(Color::Green)),
                 Span::styled("  │  ", Style::default().fg(Color::DarkGray)),
-                Span::styled(format!("{} tables", meta.tables.len()), Style::default().fg(Color::Cyan)),
+                Span::styled(
+                    format!("{} tables", meta.tables.len()),
+                    Style::default().fg(Color::Cyan),
+                ),
                 Span::styled("  │  ", Style::default().fg(Color::DarkGray)),
-                Span::styled(format!("{} rows", meta.total_rows), Style::default().fg(Color::Yellow)),
+                Span::styled(
+                    format!("{} rows", meta.total_rows),
+                    Style::default().fg(Color::Yellow),
+                ),
             ]));
 
             // Table tabs
@@ -199,7 +207,9 @@ impl Widget for DatabasePage {
                     tab_spans.push(Span::styled("   ", Style::default().fg(Color::DarkGray)));
                 }
                 let style = if i == self.selected_table {
-                    Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)
+                    Style::default()
+                        .fg(Color::Cyan)
+                        .add_modifier(Modifier::BOLD)
                 } else {
                     Style::default().fg(Color::DarkGray)
                 };
@@ -343,8 +353,14 @@ mod tests {
         page.set_metadata(DbMetadata {
             file_size_bytes: 24576,
             tables: vec![
-                TableInfo { name: "traces".into(), row_count: 5 },
-                TableInfo { name: "turns".into(), row_count: 20 },
+                TableInfo {
+                    name: "traces".into(),
+                    row_count: 5,
+                },
+                TableInfo {
+                    name: "turns".into(),
+                    row_count: 20,
+                },
             ],
             total_rows: 25,
         });

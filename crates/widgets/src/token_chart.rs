@@ -53,7 +53,12 @@ impl Widget for TokenChartWidget {
             })
             .collect();
 
-        let max_tokens = usages.iter().map(|(_, u)| u.total()).max().unwrap_or(1).max(1);
+        let max_tokens = usages
+            .iter()
+            .map(|(_, u)| u.total())
+            .max()
+            .unwrap_or(1)
+            .max(1);
 
         let mut lines = Vec::new();
         for (agent, usage) in &usages {
@@ -107,12 +112,7 @@ impl Widget for TokenChartWidget {
 
     fn handle_scroll(&mut self, _direction: ScrollDirection) {}
 
-    fn handle_click(
-        &mut self,
-        _row: u16,
-        _col: u16,
-        _ctx: &RenderContext,
-    ) -> Option<WidgetAction> {
+    fn handle_click(&mut self, _row: u16, _col: u16, _ctx: &RenderContext) -> Option<WidgetAction> {
         None
     }
 }

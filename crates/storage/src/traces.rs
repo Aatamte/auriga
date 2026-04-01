@@ -1,5 +1,5 @@
 use orchestrator_core::{
-    AgentId, MessageContent, MessageType, Trace, TraceId, TraceStatus, TokenUsage, Turn, TurnId,
+    AgentId, MessageContent, MessageType, TokenUsage, Trace, TraceId, TraceStatus, Turn, TurnId,
     TurnMeta, TurnRole, TurnStatus,
 };
 use rusqlite::params;
@@ -114,9 +114,7 @@ impl Database {
         )?;
 
         let traces = stmt
-            .query_map(params![agent_id.0.to_string()], |row| {
-                Ok(row_to_trace(row))
-            })?
+            .query_map(params![agent_id.0.to_string()], |row| Ok(row_to_trace(row)))?
             .collect::<Result<Vec<_>, _>>()?
             .into_iter()
             .collect::<anyhow::Result<Vec<_>>>()?;
@@ -339,11 +337,7 @@ mod tests {
         store.insert(agent_id, user_builder);
         store.insert(agent_id, asst_builder);
 
-        store
-            .turns_for(agent_id)
-            .into_iter()
-            .cloned()
-            .collect()
+        store.turns_for(agent_id).into_iter().cloned().collect()
     }
 
     #[test]

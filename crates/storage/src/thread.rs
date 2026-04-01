@@ -110,9 +110,7 @@ pub fn start_storage_thread(db_path: PathBuf) -> anyhow::Result<StorageHandle> {
                         classifier_name,
                         label,
                     } => {
-                        if let Err(e) =
-                            db.save_training_label(trace_id, &classifier_name, &label)
-                        {
+                        if let Err(e) = db.save_training_label(trace_id, &classifier_name, &label) {
                             eprintln!("storage error: {}", e);
                         }
                     }

@@ -49,10 +49,7 @@ impl DecisionTreeClassifier {
     }
 
     /// Serialize the tree + label map to a JSON string for storage.
-    pub fn serialize(
-        tree: &DecisionTree<f64, usize>,
-        label_map: &[String],
-    ) -> Result<String> {
+    pub fn serialize(tree: &DecisionTree<f64, usize>, label_map: &[String]) -> Result<String> {
         let s = SerializedTree {
             tree: tree.clone(),
             label_map: label_map.to_vec(),
