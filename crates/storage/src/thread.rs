@@ -2,7 +2,9 @@ use std::path::PathBuf;
 use std::sync::mpsc;
 use std::thread;
 
-use orchestrator_core::{Trace, Turn};
+use orchestrator_classifier::ClassificationResult;
+use orchestrator_core::{Trace, TraceId, Turn};
+use orchestrator_ml::SavedModel;
 
 use crate::db::Database;
 
@@ -12,6 +14,17 @@ pub enum StorageCommand {
     SaveTrace {
         trace: Box<Trace>,
         turns: Vec<Turn>,
+    },
+    SaveClassification {
+        result: ClassificationResult,
+    },
+    SaveModel {
+        model: SavedModel,
+    },
+    SaveTrainingLabel {
+        trace_id: TraceId,
+        classifier_name: String,
+        label: String,
     },
     Shutdown,
 }
@@ -28,6 +41,25 @@ impl StorageHandle {
         let _ = self.tx.send(StorageCommand::SaveTrace {
             trace: Box::new(trace),
             turns,
+        });
+    }
+
+    /// Queue a classification result for persistence. Non-blocking.
+    pub fn save_classification(&self, result: ClassificationResult) {
+        let _ = self.tx.send(StorageCommand::SaveClassification { result });
+    }
+
+    /// Queue a trained model for persistence. Non-blocking.
+    pub fn save_model(&self, model: SavedModel) {
+        let _ = self.tx.send(StorageCommand::SaveModel { model });
+    }
+
+    /// Queue a training label for persistence. Non-blocking.
+    pub fn save_training_label(&self, trace_id: TraceId, classifier_name: String, label: String) {
+        let _ = self.tx.send(StorageCommand::SaveTrainingLabel {
+            trace_id,
+            classifier_name,
+            label,
         });
     }
 
@@ -60,6 +92,27 @@ pub fn start_storage_thread(db_path: PathBuf) -> anyhow::Result<StorageHandle> {
                     StorageCommand::SaveTrace { trace, turns } => {
                         let turn_refs: Vec<&Turn> = turns.iter().collect();
                         if let Err(e) = db.save_trace(&trace, &turn_refs) {
+                            eprintln!("storage error: {}", e);
+                        }
+                    }
+                    StorageCommand::SaveClassification { result } => {
+                        if let Err(e) = db.save_classification(&result) {
+                            eprintln!("storage error: {}", e);
+                        }
+                    }
+                    StorageCommand::SaveModel { model } => {
+                        if let Err(e) = db.save_model(&model) {
+                            eprintln!("storage error: {}", e);
+                        }
+                    }
+                    StorageCommand::SaveTrainingLabel {
+                        trace_id,
+                        classifier_name,
+                        label,
+                    } => {
+                        if let Err(e) =
+                            db.save_training_label(trace_id, &classifier_name, &label)
+                        {
                             eprintln!("storage error: {}", e);
                         }
                     }

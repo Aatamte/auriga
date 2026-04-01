@@ -1,5 +1,6 @@
 mod agent_list;
 pub mod agent_pane;
+mod classifiers_page;
 mod database_page;
 mod file_tree_widget;
 pub mod nav_bar;
@@ -9,6 +10,7 @@ mod status_bar;
 mod token_chart;
 
 pub use agent_list::AgentListWidget;
+pub use classifiers_page::{ClassificationResultView, ClassifierStatusView, ClassifiersPage};
 pub use agent_pane::AgentPaneWidget;
 pub use database_page::{
     DatabasePage, DbMetadata as DbMetadataView, QueryResult as QueryResultView,
@@ -21,7 +23,7 @@ pub use settings_page::{SettingsField, SettingsPage};
 pub use status_bar::StatusBarWidget;
 pub use token_chart::TokenChartWidget;
 
-use orchestrator_core::{AgentId, AgentStore, FileTree, FocusState, Page, ScrollDirection, TurnStore};
+use orchestrator_core::{AgentId, AgentStore, FileTree, FocusState, Page, ScrollDirection, TraceStore, TurnStore};
 use ratatui::layout::Rect;
 use ratatui::style::Color;
 use ratatui::Frame;
@@ -29,10 +31,22 @@ use ratatui::Frame;
 pub struct RenderContext<'a> {
     pub agents: &'a AgentStore,
     pub turns: &'a TurnStore,
+    pub traces: &'a TraceStore,
     pub focus: &'a FocusState,
     pub file_tree: &'a FileTree,
     /// Render an agent's terminal directly into a buffer at the given rect.
     pub render_term: &'a dyn Fn(AgentId, &mut ratatui::buffer::Buffer, Rect),
+}
+
+/// Format a token count compactly: 500, 1.0K, 45.5K, 1.2M
+pub fn format_tokens(n: u64) -> String {
+    if n >= 1_000_000 {
+        format!("{:.1}M", n as f64 / 1_000_000.0)
+    } else if n >= 1_000 {
+        format!("{:.1}K", n as f64 / 1_000.0)
+    } else {
+        n.to_string()
+    }
 }
 
 pub trait Widget {
@@ -50,6 +64,7 @@ pub enum WidgetAction {
     SaveConfig,
     RefreshDatabase,
     QueryTable { table: String, limit: u64, offset: u64 },
+    ToggleClassifier(String),
 }
 
 pub struct WidgetRegistry {
@@ -62,6 +77,7 @@ pub struct WidgetRegistry {
     pub nav_bar: NavBarWidget,
     pub settings_page: SettingsPage,
     pub database_page: DatabasePage,
+    pub classifiers_page: ClassifiersPage,
 }
 
 impl WidgetRegistry {
@@ -76,6 +92,7 @@ impl WidgetRegistry {
             nav_bar: NavBarWidget::new(),
             settings_page: SettingsPage::new(),
             database_page: DatabasePage::new(),
+            classifiers_page: ClassifiersPage::new(),
         }
     }
 
@@ -89,6 +106,7 @@ impl WidgetRegistry {
             "status-bar" => Some(&mut self.status_bar),
             "settings-page" => Some(&mut self.settings_page),
             "database-page" => Some(&mut self.database_page),
+            "classifiers-page" => Some(&mut self.classifiers_page),
             _ => None,
         }
     }
@@ -128,5 +146,29 @@ pub fn activity_color(age_secs: Option<f64>, modify_count: usize) -> Color {
         Color::Cyan
     } else {
         Color::DarkGray
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn format_tokens_small() {
+        assert_eq!(format_tokens(0), "0");
+        assert_eq!(format_tokens(500), "500");
+        assert_eq!(format_tokens(999), "999");
+    }
+
+    #[test]
+    fn format_tokens_thousands() {
+        assert_eq!(format_tokens(1_000), "1.0K");
+        assert_eq!(format_tokens(15_500), "15.5K");
+    }
+
+    #[test]
+    fn format_tokens_millions() {
+        assert_eq!(format_tokens(1_000_000), "1.0M");
+        assert_eq!(format_tokens(2_500_000), "2.5M");
     }
 }

@@ -1,6 +1,6 @@
 use rusqlite::Connection;
 
-const CURRENT_VERSION: i64 = 1;
+const CURRENT_VERSION: i64 = 3;
 
 const SCHEMA_V1: &str = "
 CREATE TABLE IF NOT EXISTS schema_version (
@@ -49,8 +49,16 @@ CREATE INDEX IF NOT EXISTS idx_traces_agent_id ON traces(agent_id);
 pub fn init(conn: &Connection) -> rusqlite::Result<()> {
     let version = get_version(conn);
 
-    if version < CURRENT_VERSION {
+    if version < 1 {
         conn.execute_batch(SCHEMA_V1)?;
+    }
+    if version < 2 {
+        conn.execute_batch(orchestrator_classifier::CLASSIFICATIONS_TABLE_SQL)?;
+    }
+    if version < 3 {
+        conn.execute_batch(orchestrator_ml::ML_SCHEMA_SQL)?;
+    }
+    if version < CURRENT_VERSION {
         set_version(conn, CURRENT_VERSION)?;
     }
 
@@ -102,6 +110,9 @@ mod tests {
 
         assert!(tables.contains(&"traces".to_string()));
         assert!(tables.contains(&"turns".to_string()));
+        assert!(tables.contains(&"classifications".to_string()));
+        assert!(tables.contains(&"models".to_string()));
+        assert!(tables.contains(&"training_labels".to_string()));
         assert!(tables.contains(&"schema_version".to_string()));
     }
 

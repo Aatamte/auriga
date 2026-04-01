@@ -1,0 +1,10 @@
+[package]
+name = "orchestrator-classifier"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+orchestrator-core = { path = "../core" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+uuid = { workspace = true }

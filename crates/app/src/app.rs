@@ -6,6 +6,7 @@ use alacritty_terminal::vte;
 use anyhow::Result;
 use crossterm::event::Event;
 use orchestrator_claude_log::{to_turn_builder, ClaudeWatchEvent, ClaudeWatchHandle};
+use orchestrator_classifier::ClassifierRegistry;
 use orchestrator_core::{AgentId, AgentStore, FileTree, FocusState, TraceStore, TurnStore};
 use ratatui::layout::Rect;
 use orchestrator_grid::CellRect;
@@ -45,6 +46,7 @@ pub struct App {
     pub pid_map: HashMap<u32, AgentId>,
     pub last_cell_rects: Vec<CellRect>,
     pub last_nav_rect: Rect,
+    pub classifier_registry: ClassifierRegistry,
     pub running: bool,
 }
 
@@ -92,6 +94,7 @@ impl App {
             pid_map: HashMap::new(),
             last_cell_rects: Vec::new(),
             last_nav_rect: Rect::default(),
+            classifier_registry: ClassifierRegistry::new(),
             running: true,
         }
     }
@@ -179,6 +182,10 @@ impl App {
                     .filter(|t| t.session_id.as_deref() == Some(&trace.session_id))
                     .cloned()
                     .collect();
+                let results = self.classifier_registry.run_on_complete(&trace, &turns);
+                for result in results {
+                    self.storage.save_classification(result);
+                }
                 self.storage.save_trace(trace, turns);
             }
         }
@@ -203,6 +210,10 @@ impl App {
                 .filter(|t| t.session_id.as_deref() == Some(&trace.session_id))
                 .cloned()
                 .collect();
+            let results = self.classifier_registry.run_on_complete(&trace, &turns);
+            for result in results {
+                self.storage.save_classification(result);
+            }
             self.storage.save_trace(trace, turns);
         }
     }
@@ -341,7 +352,7 @@ impl App {
                         }
                     }
 
-                    // Immediately flush to SQLite
+                    // Immediately flush to SQLite + run incremental classifiers
                     if let Some(trace) = self.traces.active_trace(agent_id) {
                         let trace_clone = trace.clone();
                         let turns: Vec<_> = self
@@ -351,6 +362,12 @@ impl App {
                             .filter(|t| t.session_id.as_deref() == Some(&entry.session_id))
                             .cloned()
                             .collect();
+                        let results = self
+                            .classifier_registry
+                            .run_incremental(&trace_clone, &turns);
+                        for result in results {
+                            self.storage.save_classification(result);
+                        }
                         self.storage.save_trace(trace_clone, turns);
                     }
                 }
@@ -508,6 +525,20 @@ impl App {
                     self.widgets.settings_page.mark_saved();
                 }
             }
+            WidgetAction::ToggleClassifier(name) => {
+                let currently_enabled = self.classifier_registry.is_enabled(&name);
+                self.classifier_registry.set_enabled(&name, !currently_enabled);
+                // Persist to config
+                let mut config = fields_to_config(&self.widgets.settings_page.field_values());
+                config.disabled_classifiers = self
+                    .classifier_registry
+                    .classifiers_info()
+                    .iter()
+                    .filter(|c| !c.enabled)
+                    .map(|c| c.name.clone())
+                    .collect();
+                let _ = crate::config::save(&config);
+            }
         }
     }
 
@@ -554,6 +585,35 @@ impl App {
             }
         }
     }
+
+    pub fn refresh_classifiers(&mut self) {
+        use orchestrator_widgets::{ClassificationResultView, ClassifierStatusView};
+
+        let statuses: Vec<ClassifierStatusView> = self
+            .classifier_registry
+            .classifiers_info()
+            .into_iter()
+            .map(|c| ClassifierStatusView {
+                name: c.name,
+                trigger: format!("{:?}", c.trigger),
+                enabled: c.enabled,
+            })
+            .collect();
+        self.widgets.classifiers_page.set_classifiers(statuses);
+
+        if let Ok(results) = self.db_reader.list_recent_classifications(50) {
+            let views: Vec<ClassificationResultView> = results
+                .into_iter()
+                .map(|r| ClassificationResultView {
+                    classifier_name: r.classifier_name,
+                    trace_id: r.trace_id.0.to_string(),
+                    timestamp: r.timestamp,
+                    payload: serde_json::to_string(&r.payload).unwrap_or_default(),
+                })
+                .collect();
+            self.widgets.classifiers_page.set_results(views);
+        }
+    }
 }
 
 fn config_to_fields(config: &crate::config::Config) -> Vec<SettingsField> {
@@ -566,7 +626,10 @@ fn config_to_fields(config: &crate::config::Config) -> Vec<SettingsField> {
 }
 
 fn fields_to_config(values: &[(&str, &str)]) -> crate::config::Config {
-    let mut config = crate::config::Config::default();
+    let mut config = crate::config::Config {
+        mcp_port: 7850,
+        disabled_classifiers: Vec::new(),
+    };
     for &(key, val) in values {
         if key == "mcp_port" {
             if let Ok(port) = val.parse::<u16>() {

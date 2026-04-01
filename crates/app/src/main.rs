@@ -105,9 +105,12 @@ fn main() -> Result<()> {
         app.poll_claude_logs();
         app.file_tree.refresh_caches();
 
-        // Live-refresh database page when active
+        // Live-refresh pages when active
         if app.focus.page == Page::Database {
             app.refresh_database();
+        }
+        if app.focus.page == Page::Classifiers {
+            app.refresh_classifiers();
         }
 
         // Render
@@ -133,6 +136,7 @@ fn main() -> Result<()> {
             let ctx = RenderContext {
                 agents: &app.agents,
                 turns: &app.turns,
+                traces: &app.traces,
                 focus: &app.focus,
                 file_tree: &app.file_tree,
                 render_term: &term_renderer,
@@ -155,6 +159,10 @@ fn main() -> Result<()> {
                 }
                 Page::Database => {
                     app.widgets.database_page.render(frame, content_area, &ctx);
+                    app.last_cell_rects = Vec::new();
+                }
+                Page::Classifiers => {
+                    app.widgets.classifiers_page.render(frame, content_area, &ctx);
                     app.last_cell_rects = Vec::new();
                 }
             }

@@ -9,6 +9,10 @@ members = [
     "crates/mcp",
     "crates/claude-log",
     "crates/storage",
+    "crates/classifier",
+    "crates/ml",
+    "crates/skills",
+    "crates/cli",
     "crates/app",
     "crates/benches",
 ]
@@ -29,3 +33,4 @@ ignore = "0.4"
 tiny_http = "0.12"
 rusqlite = { version = "0.31", features = ["bundled"] }
 uuid = { version = "1", features = ["v4", "serde"] }
+self_update = { version = "0.41", features = ["archive-tar", "compression-flate2"] }

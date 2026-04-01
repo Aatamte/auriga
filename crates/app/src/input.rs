@@ -44,6 +44,11 @@ pub fn handle_key(app: &mut App, key: KeyEvent) {
                 app.handle_widget_action(action);
             }
         }
+        Page::Classifiers => {
+            if let Some(action) = app.widgets.classifiers_page.handle_key(key) {
+                app.handle_widget_action(action);
+            }
+        }
     }
 }
 
@@ -77,6 +82,7 @@ pub fn handle_mouse(app: &mut App, mouse: MouseEvent) {
             let ctx = RenderContext {
                 agents: &app.agents,
                 turns: &app.turns,
+                traces: &app.traces,
                 focus: &app.focus,
                 file_tree: &app.file_tree,
                 render_term: &term_renderer,

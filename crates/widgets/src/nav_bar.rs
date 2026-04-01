@@ -96,18 +96,18 @@ mod tests {
     }
 
     #[test]
-    fn click_settings_tab() {
+    fn click_classifiers_tab() {
         let widget = NavBarWidget::new();
-        // "Home" = 4 chars at col 1-4, then " │ " = 3 chars, "Settings" starts at col 8
-        assert_eq!(widget.handle_click(8, area()), Some(Page::Settings));
-        assert_eq!(widget.handle_click(14, area()), Some(Page::Settings));
+        // "Home" = 4 chars at col 1-4, " │ " = 3, "Classifiers" starts at col 8
+        assert_eq!(widget.handle_click(8, area()), Some(Page::Classifiers));
+        assert_eq!(widget.handle_click(18, area()), Some(Page::Classifiers));
     }
 
     #[test]
     fn click_database_tab() {
         let widget = NavBarWidget::new();
-        // "Settings" = 8 chars at col 8-15, then " │ " = 3, "Database" starts at col 19
-        assert_eq!(widget.handle_click(19, area()), Some(Page::Database));
+        // "Classifiers" = 11 chars at col 8-18, " │ " = 3, "Database" starts at col 22
+        assert_eq!(widget.handle_click(22, area()), Some(Page::Database));
     }
 
     #[test]

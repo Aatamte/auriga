@@ -12,6 +12,8 @@ orchestrator-pty = { path = "../pty" }
 orchestrator-claude-log = { path = "../claude-log" }
 orchestrator-mcp = { path = "../mcp" }
 orchestrator-storage = { path = "../storage" }
+orchestrator-classifier = { path = "../classifier" }
+orchestrator-ml = { path = "../ml" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 ratatui = { workspace = true }

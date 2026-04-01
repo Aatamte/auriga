@@ -1,7 +1,9 @@
-use crate::{RenderContext, Widget, WidgetAction};
-use orchestrator_core::{AgentId, ScrollDirection};
-use ratatui::layout::Rect;
+use crate::{format_tokens, RenderContext, Widget, WidgetAction};
+use orchestrator_core::{AgentId, AgentStatus, ScrollDirection};
+use ratatui::layout::{Alignment, Rect};
 use ratatui::style::{Color, Style};
+use ratatui::text::{Line, Span};
+use ratatui::widgets::block::{Position, Title};
 use ratatui::widgets::{Block, Borders};
 use ratatui::Frame;
 
@@ -45,17 +47,36 @@ impl AgentPaneWidget {
         is_active: bool,
         show_back: bool,
     ) {
-        let agent_name = ctx
-            .agents
-            .get(id)
-            .map(|a| a.name.as_str())
-            .unwrap_or("Unknown");
+        let agent = ctx.agents.get(id);
+        let agent_name = agent.map(|a| a.name.as_str()).unwrap_or("Unknown");
+        let agent_status = agent.map(|a| a.status).unwrap_or(AgentStatus::Idle);
 
-        let title = if show_back {
-            format!(" ◀ {} ", agent_name)
-        } else {
-            format!(" {} ", agent_name)
+        // Status indicator (matches agent_list.rs pattern)
+        let (dot, dot_color) = match agent_status {
+            AgentStatus::Working => ("● ", Color::Green),
+            AgentStatus::Idle => ("○ ", Color::DarkGray),
         };
+
+        let back_prefix = if show_back { " ◀ " } else { " " };
+        let title_left = Line::from(vec![
+            Span::raw(back_prefix),
+            Span::styled(dot, Style::default().fg(dot_color)),
+            Span::raw(agent_name),
+            Span::raw(" "),
+        ]);
+
+        // Model name (top-right)
+        let model_str = ctx
+            .traces
+            .active_trace(id)
+            .and_then(|t| t.model.as_deref());
+        let model_short = shorten_model(model_str);
+
+        // Turn count (bottom-left)
+        let turn_count = ctx.turns.agent_turn_count(id);
+
+        // Token usage (bottom-right)
+        let total_tokens = ctx.turns.agent_token_usage(id).total();
 
         let border_color = if is_active {
             Color::Cyan
@@ -63,16 +84,57 @@ impl AgentPaneWidget {
             Color::DarkGray
         };
 
-        let block = Block::default()
-            .title(title)
+        let mut block = Block::default()
+            .title(title_left)
             .borders(Borders::ALL)
             .border_style(Style::default().fg(border_color));
+
+        if !model_short.is_empty() {
+            block = block.title(
+                Title::from(Line::from(vec![
+                    Span::raw(" "),
+                    Span::styled(model_short, Style::default().fg(Color::DarkGray)),
+                    Span::raw(" "),
+                ]))
+                .alignment(Alignment::Right),
+            );
+        }
+
+        block = block.title_bottom(Line::from(vec![
+            Span::raw(" T:"),
+            Span::styled(turn_count.to_string(), Style::default().fg(Color::White)),
+            Span::raw(" "),
+        ]));
+
+        if total_tokens > 0 {
+            block = block.title(
+                Title::from(Line::from(vec![
+                    Span::raw(" tok:"),
+                    Span::styled(
+                        format_tokens(total_tokens),
+                        Style::default().fg(Color::Yellow),
+                    ),
+                    Span::raw(" "),
+                ]))
+                .position(Position::Bottom)
+                .alignment(Alignment::Right),
+            );
+        }
 
         let inner = block.inner(area);
         frame.render_widget(block, area);
 
         // Render terminal directly into the buffer
         (ctx.render_term)(id, frame.buffer_mut(), inner);
+    }
+}
+
+/// Shorten a model name for compact display.
+/// Strips "claude-" prefix: "claude-opus-4-6" → "opus-4-6"
+fn shorten_model(model: Option<&str>) -> String {
+    match model {
+        Some(m) => m.strip_prefix("claude-").unwrap_or(m).to_string(),
+        None => String::new(),
     }
 }
 
@@ -255,5 +317,21 @@ mod tests {
     fn grid_rects_zero_agents() {
         let rects = compute_grid_rects(Rect::new(0, 0, 100, 40), 0);
         assert!(rects.is_empty());
+    }
+
+    #[test]
+    fn shorten_model_strips_claude_prefix() {
+        assert_eq!(shorten_model(Some("claude-opus-4-6")), "opus-4-6");
+        assert_eq!(shorten_model(Some("claude-sonnet-4-6")), "sonnet-4-6");
+    }
+
+    #[test]
+    fn shorten_model_keeps_non_claude() {
+        assert_eq!(shorten_model(Some("gpt-4o")), "gpt-4o");
+    }
+
+    #[test]
+    fn shorten_model_none_returns_empty() {
+        assert_eq!(shorten_model(None), "");
     }
 }

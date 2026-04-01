@@ -9,11 +9,16 @@ const CONFIG_FILE: &str = "config.json";
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Config {
     pub mcp_port: u16,
+    #[serde(default)]
+    pub disabled_classifiers: Vec<String>,
 }
 
 impl Default for Config {
     fn default() -> Self {
-        Self { mcp_port: 7850 }
+        Self {
+            mcp_port: 7850,
+            disabled_classifiers: Vec::new(),
+        }
     }
 }
 
@@ -77,7 +82,7 @@ mod tests {
 
     #[test]
     fn config_round_trips_through_json() {
-        let config = Config { mcp_port: 9000 };
+        let config = Config { mcp_port: 9000, disabled_classifiers: vec![] };
         let json = serde_json::to_string(&config).unwrap();
         let parsed: Config = serde_json::from_str(&json).unwrap();
         assert_eq!(parsed.mcp_port, 9000);

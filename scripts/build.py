@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build claude-manager as a native release binary."""
+"""Build agent-orchestrator as native release binaries."""
 
 import platform
 import shutil
@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-BINARY_NAME = "claude-manager"
+BINARIES = ["aorch", "orchestrator-app"]
 
 
 def run(cmd: list[str], **kwargs) -> subprocess.CompletedProcess:
@@ -17,30 +17,29 @@ def run(cmd: list[str], **kwargs) -> subprocess.CompletedProcess:
 
 
 def main():
-    # Build release binary
     run(["cargo", "build", "--release"])
 
-    # Locate the compiled binary
-    target_bin = ROOT / "target" / "release" / BINARY_NAME
-    if not target_bin.exists():
-        print(f"ERROR: binary not found at {target_bin}", file=sys.stderr)
-        sys.exit(1)
-
-    # Strip the binary for smaller size
     system = platform.system()
-    if system in ("Darwin", "Linux"):
-        run(["strip", str(target_bin)])
+    target_dir = ROOT / "target" / "release"
 
-    size_mb = target_bin.stat().st_size / (1024 * 1024)
-    print(f"\nBuild complete: {target_bin}")
-    print(f"Size: {size_mb:.1f} MB")
-    print(f"Platform: {system} {platform.machine()}")
+    for name in BINARIES:
+        binary = target_dir / name
+        if not binary.exists():
+            print(f"ERROR: binary not found at {binary}", file=sys.stderr)
+            sys.exit(1)
 
-    # Copy to project root for convenience
-    dest = ROOT / BINARY_NAME
-    shutil.copy2(target_bin, dest)
-    dest.chmod(0o755)
-    print(f"Copied to: {dest}")
+        if system in ("Darwin", "Linux"):
+            run(["strip", str(binary)])
+
+        size_mb = binary.stat().st_size / (1024 * 1024)
+
+        dest = ROOT / name
+        shutil.copy2(binary, dest)
+        dest.chmod(0o755)
+
+        print(f"  {name}: {size_mb:.1f} MB → {dest}")
+
+    print(f"\nBuild complete — {system} {platform.machine()}")
 
 
 if __name__ == "__main__":

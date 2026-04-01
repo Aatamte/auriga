@@ -1,4 +1,4 @@
-use crate::{RenderContext, Widget, WidgetAction};
+use crate::{format_tokens, RenderContext, Widget, WidgetAction};
 use orchestrator_core::ScrollDirection;
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Modifier, Style};
@@ -17,16 +17,6 @@ impl TokenChartWidget {
 impl Default for TokenChartWidget {
     fn default() -> Self {
         Self::new()
-    }
-}
-
-fn format_tokens(n: u64) -> String {
-    if n >= 1_000_000 {
-        format!("{:.1}M", n as f64 / 1_000_000.0)
-    } else if n >= 1_000 {
-        format!("{:.1}K", n as f64 / 1_000.0)
-    } else {
-        n.to_string()
     }
 }
 
@@ -129,7 +119,7 @@ impl Widget for TokenChartWidget {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::format_tokens;
 
     #[test]
     fn format_tokens_small() {

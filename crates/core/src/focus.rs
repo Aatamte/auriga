@@ -11,16 +11,18 @@ pub enum Page {
     Home,
     Settings,
     Database,
+    Classifiers,
 }
 
 impl Page {
-    pub const ALL: &[Page] = &[Page::Home, Page::Settings, Page::Database];
+    pub const ALL: &[Page] = &[Page::Home, Page::Classifiers, Page::Database, Page::Settings];
 
     pub fn label(self) -> &'static str {
         match self {
             Page::Home => "Home",
             Page::Settings => "Settings",
             Page::Database => "Database",
+            Page::Classifiers => "Classifiers",
         }
     }
 }
