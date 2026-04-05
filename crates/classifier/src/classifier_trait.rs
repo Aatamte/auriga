@@ -1,5 +1,6 @@
 use orchestrator_core::{Trace, Turn};
 
+use crate::config::ClassifierConfig;
 use crate::{ClassificationResult, ClassifierTrigger};
 
 /// Trait that individual classifier implementations must satisfy.
@@ -13,6 +14,11 @@ pub trait Classifier: Send + Sync {
 
     /// When this classifier should run.
     fn trigger(&self) -> ClassifierTrigger;
+
+    /// The full config, if this classifier was loaded from a config file.
+    fn config(&self) -> Option<&ClassifierConfig> {
+        None
+    }
 
     /// Analyze a trace and its turns, returning zero or more results.
     ///

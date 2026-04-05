@@ -16,6 +16,33 @@
 5. **Composition over inheritance.** Components compose smaller building blocks rather than inheriting from a base. There are no base classes.
 6. **Symmetry.** If an interface has a `create`, it has a `destroy`. If it has a `save`, it has a `load`. Partial lifecycles are bugs waiting to happen.
 
+## Key Traits
+
+### Classifier
+Analyzes agent traces to detect patterns. 3 methods.
+```
+name() → &str
+trigger() → ClassifierTrigger
+classify(&self, trace, turns) → Vec<ClassificationResult>
+```
+
+### Skill
+An executable capability available to agents. 4 methods.
+```
+name() → &str
+description() → &str
+trigger() → SkillTrigger
+execute(&self, ctx) → Result<SkillResult>
+```
+
+### Widget
+A UI component that renders into a terminal area. 3 methods.
+```
+render(&mut self, frame, area, ctx)
+handle_scroll(&mut self, direction)
+handle_click(&mut self, row, col, ctx) → Option<WidgetAction>
+```
+
 ## Contract Expectations
 
 - Every interface must document its preconditions and postconditions.

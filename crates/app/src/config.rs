@@ -1,4 +1,5 @@
 use anyhow::Result;
+use orchestrator_grid::Grid;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -11,6 +12,8 @@ pub struct Config {
     pub mcp_port: u16,
     #[serde(default)]
     pub disabled_classifiers: Vec<String>,
+    #[serde(default)]
+    pub layout: Grid,
 }
 
 impl Default for Config {
@@ -18,6 +21,7 @@ impl Default for Config {
         Self {
             mcp_port: 7850,
             disabled_classifiers: Vec::new(),
+            layout: Grid::default(),
         }
     }
 }
@@ -32,21 +36,9 @@ pub fn init() -> Result<Config> {
     let dir = dir_path();
     fs::create_dir_all(&dir)?;
 
-    write_default_layout(&dir)?;
     let config = load_or_create_config(&dir)?;
 
     Ok(config)
-}
-
-fn write_default_layout(dir: &Path) -> Result<()> {
-    let path = dir.join("layout.json");
-    if path.exists() {
-        return Ok(());
-    }
-    let grid = orchestrator_grid::Grid::default();
-    let json = serde_json::to_string_pretty(&grid)?;
-    fs::write(path, json)?;
-    Ok(())
 }
 
 /// Save config to disk.
@@ -85,9 +77,19 @@ mod tests {
         let config = Config {
             mcp_port: 9000,
             disabled_classifiers: vec![],
+            layout: Grid::default(),
         };
         let json = serde_json::to_string(&config).unwrap();
         let parsed: Config = serde_json::from_str(&json).unwrap();
         assert_eq!(parsed.mcp_port, 9000);
+        assert_eq!(parsed.layout.columns, 12);
+    }
+
+    #[test]
+    fn config_without_layout_gets_default() {
+        let json = r#"{"mcp_port": 7850}"#;
+        let config: Config = serde_json::from_str(json).unwrap();
+        assert_eq!(config.layout.columns, 12);
+        assert!(!config.layout.rows.is_empty());
     }
 }

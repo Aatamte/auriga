@@ -8,3 +8,12 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 anyhow = { workspace = true }
 tiny_http = { workspace = true }
+tracing = { workspace = true }
+orchestrator-storage = { path = "../storage" }
+orchestrator-classifier = { path = "../classifier" }
+orchestrator-core = { path = "../core" }
+orchestrator-ml = { path = "../ml" }
+uuid = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3"

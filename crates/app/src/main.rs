@@ -41,6 +41,21 @@ fn main() -> Result<()> {
     // Init project config directory
     let config = config::init()?;
 
+    // Logging: disabled for now, enable when needed
+    let enable_logging = false;
+    let _log_guard = if enable_logging {
+        let log_dir = config::dir_path();
+        let file_appender = tracing_appender::rolling::daily(&log_dir, "orchestrator.log");
+        let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
+        tracing_subscriber::fmt()
+            .with_writer(non_blocking)
+            .with_env_filter("info")
+            .init();
+        Some(guard)
+    } else {
+        None
+    };
+
     enable_raw_mode()?;
     let mut out = stdout();
     out.execute(EnterAlternateScreen)?;
@@ -54,7 +69,9 @@ fn main() -> Result<()> {
 
     // MCP server
     let mcp = orchestrator_mcp::start_mcp_server(config.mcp_port)?;
-    let _ = write_mcp_json(mcp.port);
+    if let Err(e) = write_mcp_json(mcp.port) {
+        tracing::warn!(error = %e, "failed to write .mcp.json");
+    }
 
     // Storage
     let db_path = config::dir_path().join("orchestrator.db");
@@ -88,6 +105,14 @@ fn main() -> Result<()> {
         &config,
     );
 
+    // Load classifier configs from .agent-orchestrator/classifiers/
+    app.load_classifier_configs();
+
+    // Apply disabled classifiers from config
+    for name in &config.disabled_classifiers {
+        app.classifier_registry.set_enabled(name, false);
+    }
+
     // Pre-compute layout rects so pane_size() works before first render
     {
         let size = terminal.size()?;
@@ -110,10 +135,14 @@ fn main() -> Result<()> {
         app.poll_file_events();
         app.poll_diff_results();
         app.poll_mcp_requests();
+        app.poll_doctor_events();
         app.poll_claude_logs();
         app.file_tree.refresh_caches();
 
         // Live-refresh pages when active
+        if app.focus.page == Page::Home {
+            app.refresh_classifier_panel();
+        }
         if app.focus.page == Page::Database {
             app.refresh_database();
         }
@@ -155,9 +184,9 @@ fn main() -> Result<()> {
                 Page::Home => {
                     let cell_rects = app.grid.compute_rects(content_area);
                     for cell_rect in &cell_rects {
-                        if let Some(widget) = app.widgets.get_mut(&cell_rect.widget) {
-                            widget.render(frame, cell_rect.rect, &ctx);
-                        }
+                        app.widgets
+                            .get_mut(cell_rect.widget)
+                            .render(frame, cell_rect.rect, &ctx);
                     }
                     app.last_cell_rects = cell_rects;
                 }
@@ -173,6 +202,10 @@ fn main() -> Result<()> {
                     app.widgets
                         .classifiers_page
                         .render(frame, content_area, &ctx);
+                    app.last_cell_rects = Vec::new();
+                }
+                Page::Doctor => {
+                    app.widgets.doctor_page.render(frame, content_area, &ctx);
                     app.last_cell_rects = Vec::new();
                 }
             }
@@ -194,7 +227,9 @@ fn main() -> Result<()> {
     app.storage.shutdown();
 
     // Cleanup
-    let _ = std::fs::remove_file(".mcp.json");
+    if let Err(e) = std::fs::remove_file(".mcp.json") {
+        tracing::debug!(error = %e, "failed to clean up .mcp.json");
+    }
 
     let mut out = stdout();
     out.execute(DisableMouseCapture)?;

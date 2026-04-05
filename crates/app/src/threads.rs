@@ -30,11 +30,17 @@ pub fn start_diff_thread() -> (mpsc::Sender<PathBuf>, mpsc::Receiver<DiffResult>
     thread::spawn(move || {
         while let Ok(path) = path_rx.recv() {
             if let Some((added, removed)) = git_diff_stat(&path) {
-                let _ = result_tx.send(DiffResult {
-                    path,
-                    added,
-                    removed,
-                });
+                if result_tx
+                    .send(DiffResult {
+                        path,
+                        added,
+                        removed,
+                    })
+                    .is_err()
+                {
+                    tracing::debug!("diff result channel closed");
+                    break;
+                }
             }
         }
     });
@@ -70,31 +76,36 @@ pub fn start_file_watcher(tx: mpsc::Sender<FileEvent>) -> notify::Result<impl Wa
         match event.kind {
             notify::EventKind::Create(_) => {
                 for path in event.paths {
-                    if !should_ignore_path(&path) {
-                        let _ = tx.send(FileEvent::Created(path));
+                    if !should_ignore_path(&path) && tx.send(FileEvent::Created(path)).is_err() {
+                        tracing::debug!("file event channel closed");
                     }
                 }
             }
             notify::EventKind::Modify(_) => {
                 for path in event.paths {
-                    if !should_ignore_path(&path) {
-                        let _ = tx.send(FileEvent::Modified(path));
+                    if !should_ignore_path(&path) && tx.send(FileEvent::Modified(path)).is_err() {
+                        tracing::debug!("file event channel closed");
                     }
                 }
             }
             notify::EventKind::Remove(_) => {
                 for path in event.paths {
-                    if !should_ignore_path(&path) {
-                        let _ = tx.send(FileEvent::Removed(path));
+                    if !should_ignore_path(&path) && tx.send(FileEvent::Removed(path)).is_err() {
+                        tracing::debug!("file event channel closed");
                     }
                 }
             }
             _ => {
-                if event.paths.len() == 2 && !should_ignore_path(&event.paths[1]) {
-                    let _ = tx.send(FileEvent::Renamed(
-                        event.paths[0].clone(),
-                        event.paths[1].clone(),
-                    ));
+                if event.paths.len() == 2
+                    && !should_ignore_path(&event.paths[1])
+                    && tx
+                        .send(FileEvent::Renamed(
+                            event.paths[0].clone(),
+                            event.paths[1].clone(),
+                        ))
+                        .is_err()
+                {
+                    tracing::debug!("file event channel closed");
                 }
             }
         }

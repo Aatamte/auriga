@@ -2,6 +2,7 @@ use crate::app::App;
 use alacritty_terminal::grid::Scroll;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
 use orchestrator_core::{Page, ScrollDirection};
+use orchestrator_grid::WidgetId;
 use orchestrator_widgets::{RenderContext, WidgetAction};
 use ratatui::layout::Rect;
 
@@ -14,7 +15,9 @@ pub fn handle_key(app: &mut App, key: KeyEvent) {
                 return;
             }
             KeyCode::Char('n') => {
-                let _ = app.spawn_agent("claude");
+                if let Err(e) = app.spawn_agent("claude") {
+                    tracing::error!(error = %e, "failed to spawn agent");
+                }
                 return;
             }
             KeyCode::Char('w') => {
@@ -46,6 +49,23 @@ pub fn handle_key(app: &mut App, key: KeyEvent) {
         }
         Page::Classifiers => {
             if let Some(action) = app.widgets.classifiers_page.handle_key(key) {
+                app.handle_widget_action(action);
+            }
+        }
+        Page::Doctor => {
+            if app.widgets.doctor_page.agent_id.is_some() {
+                // Forward keys to the doctor agent's PTY
+                let bytes = key_to_bytes(key);
+                if !bytes.is_empty() {
+                    if let Some(id) = app.widgets.doctor_page.agent_id {
+                        if let Some(pty) = app.ptys.get_mut(&id) {
+                            if let Err(e) = pty.write_input(&bytes) {
+                                tracing::warn!(error = %e, "doctor PTY write failed");
+                            }
+                        }
+                    }
+                }
+            } else if let Some(action) = app.widgets.doctor_page.handle_key(key) {
                 app.handle_widget_action(action);
             }
         }
@@ -87,32 +107,35 @@ pub fn handle_mouse(app: &mut App, mouse: MouseEvent) {
                 file_tree: &app.file_tree,
                 render_term: &term_renderer,
             };
-            if let Some(widget) = app.widgets.get_mut(&widget_name) {
-                if let Some(action) = widget.handle_click(local_row, local_col, &ctx) {
-                    app.handle_widget_action(action);
-                }
+            let widget = app.widgets.get_mut(widget_name);
+            if let Some(action) = widget.handle_click(local_row, local_col, &ctx) {
+                app.handle_widget_action(action);
             }
         }
         MouseEventKind::ScrollUp => {
-            if widget_name == "agent-pane" {
+            if widget_name == WidgetId::AgentPane {
                 if let Some(id) = app.focus.active_agent {
                     if let Some(term) = app.terms.get_mut(&id) {
                         term.scroll_display(Scroll::Delta(3));
                     }
                 }
-            } else if let Some(widget) = app.widgets.get_mut(&widget_name) {
-                widget.handle_scroll(ScrollDirection::Up);
+            } else {
+                app.widgets
+                    .get_mut(widget_name)
+                    .handle_scroll(ScrollDirection::Up);
             }
         }
         MouseEventKind::ScrollDown => {
-            if widget_name == "agent-pane" {
+            if widget_name == WidgetId::AgentPane {
                 if let Some(id) = app.focus.active_agent {
                     if let Some(term) = app.terms.get_mut(&id) {
                         term.scroll_display(Scroll::Delta(-3));
                     }
                 }
-            } else if let Some(widget) = app.widgets.get_mut(&widget_name) {
-                widget.handle_scroll(ScrollDirection::Down);
+            } else {
+                app.widgets
+                    .get_mut(widget_name)
+                    .handle_scroll(ScrollDirection::Down);
             }
         }
         _ => {}

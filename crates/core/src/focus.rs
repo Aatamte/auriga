@@ -12,6 +12,7 @@ pub enum Page {
     Settings,
     Database,
     Classifiers,
+    Doctor,
 }
 
 impl Page {
@@ -19,6 +20,7 @@ impl Page {
         Page::Home,
         Page::Classifiers,
         Page::Database,
+        Page::Doctor,
         Page::Settings,
     ];
 
@@ -28,6 +30,7 @@ impl Page {
             Page::Settings => "Settings",
             Page::Database => "Database",
             Page::Classifiers => "Classifiers",
+            Page::Doctor => "Doctor",
         }
     }
 }

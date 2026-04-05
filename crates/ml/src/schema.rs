@@ -5,8 +5,9 @@ pub const ML_SCHEMA_SQL: &str = "\
 CREATE TABLE IF NOT EXISTS training_labels (
     trace_id TEXT NOT NULL,
     classifier_name TEXT NOT NULL,
+    position INTEGER NOT NULL,
     label TEXT NOT NULL,
-    PRIMARY KEY (trace_id, classifier_name)
+    PRIMARY KEY (trace_id, classifier_name, position)
 );
 
 CREATE TABLE IF NOT EXISTS models (

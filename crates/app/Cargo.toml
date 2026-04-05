@@ -22,3 +22,6 @@ anyhow = { workspace = true }
 alacritty_terminal = { workspace = true }
 notify = { workspace = true }
 ignore = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+tracing-appender = { workspace = true }

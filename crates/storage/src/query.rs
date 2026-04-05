@@ -2,6 +2,12 @@ use std::path::Path;
 
 use crate::db::Database;
 
+/// Quote a SQLite identifier with double quotes, escaping embedded double quotes.
+/// Used for table names from sqlite_master — trusted but quoted defensively.
+fn quote_identifier(name: &str) -> String {
+    format!("\"{}\"", name.replace('"', "\"\""))
+}
+
 #[derive(Debug, Clone)]
 pub struct TableInfo {
     pub name: String,
@@ -40,8 +46,7 @@ impl Database {
         let mut total_rows: u64 = 0;
 
         for name in table_names {
-            // Safe: table names come from sqlite_master, not user input
-            let count_sql = format!("SELECT COUNT(*) FROM \"{}\"", name);
+            let count_sql = format!("SELECT COUNT(*) FROM {}", quote_identifier(&name));
             let row_count: u64 = self.conn.query_row(&count_sql, [], |row| row.get(0))?;
             total_rows += row_count;
             tables.push(TableInfo { name, row_count });
@@ -67,13 +72,11 @@ impl Database {
             anyhow::bail!("table '{}' not found", table);
         }
 
-        let count_sql = format!("SELECT COUNT(*) FROM \"{}\"", table);
+        let quoted = quote_identifier(table);
+        let count_sql = format!("SELECT COUNT(*) FROM {}", quoted);
         let total_rows: u64 = self.conn.query_row(&count_sql, [], |row| row.get(0))?;
 
-        let query_sql = format!(
-            "SELECT * FROM \"{}\" LIMIT {} OFFSET {}",
-            table, limit, offset
-        );
+        let query_sql = format!("SELECT * FROM {} LIMIT {} OFFSET {}", quoted, limit, offset);
         let mut stmt = self.conn.prepare(&query_sql)?;
 
         let columns: Vec<String> = stmt.column_names().iter().map(|s| s.to_string()).collect();
@@ -133,6 +136,16 @@ mod tests {
             )
             .unwrap();
         db
+    }
+
+    #[test]
+    fn quote_identifier_wraps_in_double_quotes() {
+        assert_eq!(quote_identifier("traces"), "\"traces\"");
+    }
+
+    #[test]
+    fn quote_identifier_escapes_embedded_double_quotes() {
+        assert_eq!(quote_identifier("has\"quote"), "\"has\"\"quote\"");
     }
 
     #[test]

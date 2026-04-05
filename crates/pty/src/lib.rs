@@ -20,6 +20,17 @@ impl PtyHandle {
         rows: u16,
         env: &[(&str, &str)],
     ) -> Result<Self> {
+        Self::spawn_with_args(command, &[], working_dir, cols, rows, env)
+    }
+
+    pub fn spawn_with_args(
+        command: &str,
+        args: &[&str],
+        working_dir: &Path,
+        cols: u16,
+        rows: u16,
+        env: &[(&str, &str)],
+    ) -> Result<Self> {
         let pty_system = native_pty_system();
         let pair = pty_system.openpty(PtySize {
             rows,
@@ -29,6 +40,9 @@ impl PtyHandle {
         })?;
 
         let mut cmd = CommandBuilder::new(command);
+        for arg in args {
+            cmd.arg(arg);
+        }
         cmd.cwd(working_dir);
         cmd.env("TERM", "xterm-256color");
         for (key, value) in env {

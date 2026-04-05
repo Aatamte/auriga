@@ -1,6 +1,6 @@
 use rusqlite::Connection;
 
-const CURRENT_VERSION: i64 = 3;
+const CURRENT_VERSION: i64 = 4;
 
 const SCHEMA_V1: &str = "
 CREATE TABLE IF NOT EXISTS schema_version (
@@ -57,6 +57,21 @@ pub fn init(conn: &Connection) -> rusqlite::Result<()> {
     }
     if version < 3 {
         conn.execute_batch(orchestrator_ml::ML_SCHEMA_SQL)?;
+    }
+    if version < 4 {
+        // Add position column to training_labels (recreate table)
+        conn.execute_batch(
+            "DROP TABLE IF EXISTS training_labels;
+             CREATE TABLE IF NOT EXISTS training_labels (
+                 trace_id TEXT NOT NULL,
+                 classifier_name TEXT NOT NULL,
+                 position INTEGER NOT NULL,
+                 label TEXT NOT NULL,
+                 PRIMARY KEY (trace_id, classifier_name, position)
+             );
+             CREATE INDEX IF NOT EXISTS idx_training_labels_classifier_name
+                 ON training_labels(classifier_name);",
+        )?;
     }
     if version < CURRENT_VERSION {
         set_version(conn, CURRENT_VERSION)?;

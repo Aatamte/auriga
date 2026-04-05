@@ -59,6 +59,7 @@ impl Database {
                     classifier_name: name,
                     timestamp: ts,
                     payload,
+                    notification: None,
                 })
             })
             .collect();
@@ -102,6 +103,7 @@ impl Database {
                     classifier_name: name,
                     timestamp: ts,
                     payload,
+                    notification: None,
                 })
             })
             .collect();
@@ -143,6 +145,7 @@ mod tests {
             classifier_name: "test-classifier".into(),
             timestamp: "2026-01-01T00:01:00Z".into(),
             payload: serde_json::json!({"label": "looping", "confidence": 0.85}),
+            notification: None,
         };
         db.save_classification(&result).unwrap();
 
@@ -189,6 +192,7 @@ mod tests {
             classifier_name: "test".into(),
             timestamp: "2026-01-01T00:01:00Z".into(),
             payload: serde_json::json!({"v": 1}),
+            notification: None,
         };
         db.save_classification(&result).unwrap();
 
@@ -199,6 +203,7 @@ mod tests {
             classifier_name: "test".into(),
             timestamp: "2026-01-01T00:01:00Z".into(),
             payload: serde_json::json!({"v": 2}),
+            notification: None,
         };
         db.save_classification(&result2).unwrap();
 
@@ -236,6 +241,7 @@ mod tests {
                 classifier_name: "test".into(),
                 timestamp: format!("2026-01-01T00:0{}:00Z", i),
                 payload: serde_json::json!({"i": i}),
+                notification: None,
             };
             db.save_classification(&r).unwrap();
         }

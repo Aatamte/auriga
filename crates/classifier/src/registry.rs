@@ -1,6 +1,7 @@
 use orchestrator_core::{Trace, Turn};
 
-use crate::{ClassificationResult, Classifier, ClassifierStatus};
+use crate::config::ClassifierConfig;
+use crate::{ClassificationResult, Classifier, ClassifierStatus, ClassifierTrigger};
 
 struct ClassifierEntry {
     classifier: Box<dyn Classifier>,
@@ -74,22 +75,47 @@ impl ClassifierRegistry {
             .collect()
     }
 
+    /// Full configs for all registered classifiers that have one.
+    /// Returns (enabled, config) pairs.
+    pub fn classifiers_with_configs(&self) -> Vec<(bool, &ClassifierConfig)> {
+        self.entries
+            .iter()
+            .filter_map(|e| e.classifier.config().map(|c| (e.enabled, c)))
+            .collect()
+    }
+
     /// Run enabled classifiers whose trigger matches incremental events.
+    /// Applies turn filtering before dispatching.
     pub fn run_incremental(&self, trace: &Trace, turns: &[Turn]) -> Vec<ClassificationResult> {
-        let mut results = Vec::new();
-        for entry in &self.entries {
-            if entry.enabled && entry.classifier.trigger().runs_incremental() {
-                results.extend(entry.classifier.classify(trace, turns));
-            }
-        }
-        results
+        self.run_filtered(turns, trace, |t: &ClassifierTrigger| t.runs_incremental())
     }
 
     /// Run enabled classifiers whose trigger matches on-complete events.
+    /// Applies turn filtering before dispatching.
     pub fn run_on_complete(&self, trace: &Trace, turns: &[Turn]) -> Vec<ClassificationResult> {
+        self.run_filtered(turns, trace, |t: &ClassifierTrigger| t.runs_on_complete())
+    }
+
+    fn run_filtered(
+        &self,
+        turns: &[Turn],
+        trace: &Trace,
+        phase_check: impl Fn(&ClassifierTrigger) -> bool,
+    ) -> Vec<ClassificationResult> {
         let mut results = Vec::new();
         for entry in &self.entries {
-            if entry.enabled && entry.classifier.trigger().runs_on_complete() {
+            let trigger = entry.classifier.trigger();
+            if !entry.enabled || !phase_check(&trigger) {
+                continue;
+            }
+            if trigger.has_filter() {
+                let filtered: Vec<Turn> =
+                    trigger.filter_turns(turns).into_iter().cloned().collect();
+                if filtered.is_empty() {
+                    continue;
+                }
+                results.extend(entry.classifier.classify(trace, &filtered));
+            } else {
                 results.extend(entry.classifier.classify(trace, turns));
             }
         }
@@ -106,7 +132,7 @@ impl Default for ClassifierRegistry {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{ClassificationId, ClassifierTrigger};
+    use crate::{ClassificationId, ClassifierTrigger, TriggerPhase, TurnFilter};
     use orchestrator_core::{AgentId, TokenUsage, Trace, TraceId, TraceStatus};
 
     struct MockClassifier {
@@ -121,7 +147,7 @@ mod tests {
         }
 
         fn trigger(&self) -> ClassifierTrigger {
-            self.trigger
+            self.trigger.clone()
         }
 
         fn classify(&self, trace: &Trace, _turns: &[Turn]) -> Vec<ClassificationResult> {
@@ -132,6 +158,7 @@ mod tests {
                     classifier_name: self.name.into(),
                     timestamp: "2026-01-01T00:00:00Z".into(),
                     payload: serde_json::json!({"detected": true}),
+                    notification: None,
                 })
                 .collect()
         }
@@ -168,8 +195,8 @@ mod tests {
     #[test]
     fn register_and_count() {
         let mut reg = ClassifierRegistry::new();
-        reg.register(mock("a", ClassifierTrigger::Incremental, 1));
-        reg.register(mock("b", ClassifierTrigger::OnComplete, 1));
+        reg.register(mock("a", ClassifierTrigger::incremental(), 1));
+        reg.register(mock("b", ClassifierTrigger::on_complete(), 1));
         assert_eq!(reg.count(), 2);
         assert_eq!(reg.names(), vec!["a", "b"]);
     }
@@ -178,16 +205,20 @@ mod tests {
     #[should_panic(expected = "duplicate classifier name")]
     fn duplicate_name_panics() {
         let mut reg = ClassifierRegistry::new();
-        reg.register(mock("dup", ClassifierTrigger::Incremental, 1));
-        reg.register(mock("dup", ClassifierTrigger::OnComplete, 1));
+        reg.register(mock("dup", ClassifierTrigger::incremental(), 1));
+        reg.register(mock("dup", ClassifierTrigger::on_complete(), 1));
     }
 
     #[test]
     fn run_incremental_only_fires_matching() {
         let mut reg = ClassifierRegistry::new();
-        reg.register(mock("inc", ClassifierTrigger::Incremental, 1));
-        reg.register(mock("comp", ClassifierTrigger::OnComplete, 1));
-        reg.register(mock("both", ClassifierTrigger::Both, 1));
+        reg.register(mock("inc", ClassifierTrigger::incremental(), 1));
+        reg.register(mock("comp", ClassifierTrigger::on_complete(), 1));
+        reg.register(mock(
+            "both",
+            ClassifierTrigger::new(TriggerPhase::Both, TurnFilter::default()),
+            1,
+        ));
 
         let trace = test_trace();
         let results = reg.run_incremental(&trace, &[]);
@@ -200,9 +231,13 @@ mod tests {
     #[test]
     fn run_on_complete_only_fires_matching() {
         let mut reg = ClassifierRegistry::new();
-        reg.register(mock("inc", ClassifierTrigger::Incremental, 1));
-        reg.register(mock("comp", ClassifierTrigger::OnComplete, 1));
-        reg.register(mock("both", ClassifierTrigger::Both, 1));
+        reg.register(mock("inc", ClassifierTrigger::incremental(), 1));
+        reg.register(mock("comp", ClassifierTrigger::on_complete(), 1));
+        reg.register(mock(
+            "both",
+            ClassifierTrigger::new(TriggerPhase::Both, TurnFilter::default()),
+            1,
+        ));
 
         let trace = test_trace();
         let results = reg.run_on_complete(&trace, &[]);
@@ -223,7 +258,7 @@ mod tests {
     #[test]
     fn multiple_results_collected() {
         let mut reg = ClassifierRegistry::new();
-        reg.register(mock("multi", ClassifierTrigger::Incremental, 3));
+        reg.register(mock("multi", ClassifierTrigger::incremental(), 3));
 
         let trace = test_trace();
         let results = reg.run_incremental(&trace, &[]);
@@ -233,7 +268,7 @@ mod tests {
     #[test]
     fn zero_result_classifier_produces_nothing() {
         let mut reg = ClassifierRegistry::new();
-        reg.register(mock("empty", ClassifierTrigger::Incremental, 0));
+        reg.register(mock("empty", ClassifierTrigger::incremental(), 0));
 
         let trace = test_trace();
         assert!(reg.run_incremental(&trace, &[]).is_empty());
@@ -242,7 +277,7 @@ mod tests {
     #[test]
     fn disabled_classifier_skipped() {
         let mut reg = ClassifierRegistry::new();
-        reg.register(mock("a", ClassifierTrigger::Incremental, 1));
+        reg.register(mock("a", ClassifierTrigger::incremental(), 1));
         reg.set_enabled("a", false);
 
         let trace = test_trace();
@@ -252,7 +287,7 @@ mod tests {
     #[test]
     fn re_enabled_classifier_runs() {
         let mut reg = ClassifierRegistry::new();
-        reg.register(mock("a", ClassifierTrigger::Incremental, 1));
+        reg.register(mock("a", ClassifierTrigger::incremental(), 1));
         reg.set_enabled("a", false);
         reg.set_enabled("a", true);
 
@@ -269,14 +304,14 @@ mod tests {
     #[test]
     fn is_enabled_default_true() {
         let mut reg = ClassifierRegistry::new();
-        reg.register(mock("a", ClassifierTrigger::Incremental, 1));
+        reg.register(mock("a", ClassifierTrigger::incremental(), 1));
         assert!(reg.is_enabled("a"));
     }
 
     #[test]
     fn is_enabled_after_disable() {
         let mut reg = ClassifierRegistry::new();
-        reg.register(mock("a", ClassifierTrigger::Incremental, 1));
+        reg.register(mock("a", ClassifierTrigger::incremental(), 1));
         reg.set_enabled("a", false);
         assert!(!reg.is_enabled("a"));
     }
@@ -284,8 +319,8 @@ mod tests {
     #[test]
     fn classifiers_info_returns_all() {
         let mut reg = ClassifierRegistry::new();
-        reg.register(mock("a", ClassifierTrigger::Incremental, 1));
-        reg.register(mock("b", ClassifierTrigger::OnComplete, 1));
+        reg.register(mock("a", ClassifierTrigger::incremental(), 1));
+        reg.register(mock("b", ClassifierTrigger::on_complete(), 1));
         reg.set_enabled("b", false);
 
         let info = reg.classifiers_info();

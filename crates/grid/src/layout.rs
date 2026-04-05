@@ -1,6 +1,21 @@
 use ratatui::layout::Rect;
 use serde::{Deserialize, Serialize};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum WidgetId {
+    AgentList,
+    AgentPane,
+    TokenChart,
+    RecentActivity,
+    FileTree,
+    StatusBar,
+    SettingsPage,
+    DatabasePage,
+    ClassifiersPage,
+    ClassifierPanel,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Grid {
     pub columns: u16,
@@ -15,7 +30,7 @@ pub struct Row {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Cell {
-    pub widget: String,
+    pub widget: WidgetId,
     pub span: u16,
     #[serde(default = "default_rowspan")]
     pub rowspan: u16,
@@ -53,37 +68,21 @@ impl Default for Grid {
                     height: Size::Percent("15%".to_string()),
                     cells: vec![
                         Cell {
-                            widget: "agent-list".to_string(),
+                            widget: WidgetId::AgentList,
                             span: 2,
                             rowspan: 1,
                         },
                         Cell {
-                            widget: "agent-pane".to_string(),
+                            widget: WidgetId::AgentPane,
                             span: 10,
-                            rowspan: 5,
+                            rowspan: 6,
                         },
                     ],
                 },
                 Row {
-                    height: Size::Percent("15%".to_string()),
+                    height: Size::Percent("12%".to_string()),
                     cells: vec![Cell {
-                        widget: "token-chart".to_string(),
-                        span: 2,
-                        rowspan: 1,
-                    }],
-                },
-                Row {
-                    height: Size::Percent("20%".to_string()),
-                    cells: vec![Cell {
-                        widget: "recent-activity".to_string(),
-                        span: 2,
-                        rowspan: 1,
-                    }],
-                },
-                Row {
-                    height: Size::Percent("35%".to_string()),
-                    cells: vec![Cell {
-                        widget: "file-tree".to_string(),
+                        widget: WidgetId::TokenChart,
                         span: 2,
                         rowspan: 1,
                     }],
@@ -91,7 +90,31 @@ impl Default for Grid {
                 Row {
                     height: Size::Percent("15%".to_string()),
                     cells: vec![Cell {
-                        widget: "status-bar".to_string(),
+                        widget: WidgetId::ClassifierPanel,
+                        span: 2,
+                        rowspan: 1,
+                    }],
+                },
+                Row {
+                    height: Size::Percent("15%".to_string()),
+                    cells: vec![Cell {
+                        widget: WidgetId::RecentActivity,
+                        span: 2,
+                        rowspan: 1,
+                    }],
+                },
+                Row {
+                    height: Size::Percent("30%".to_string()),
+                    cells: vec![Cell {
+                        widget: WidgetId::FileTree,
+                        span: 2,
+                        rowspan: 1,
+                    }],
+                },
+                Row {
+                    height: Size::Percent("13%".to_string()),
+                    cells: vec![Cell {
+                        widget: WidgetId::StatusBar,
                         span: 2,
                         rowspan: 1,
                     }],
@@ -103,7 +126,7 @@ impl Default for Grid {
 
 /// Resolved cell position: widget name + rectangle
 pub struct CellRect {
-    pub widget: String,
+    pub widget: WidgetId,
     pub rect: Rect,
 }
 
@@ -188,7 +211,7 @@ impl Grid {
                 };
 
                 result.push(CellRect {
-                    widget: cell.widget.clone(),
+                    widget: cell.widget,
                     rect: Rect::new(x, y, cell_width, cell_height),
                 });
 
@@ -215,28 +238,30 @@ mod tests {
     use super::*;
 
     #[test]
-    fn default_grid_has_five_rows() {
+    fn default_grid_has_six_rows() {
         let grid = Grid::default();
         assert_eq!(grid.columns, 12);
-        assert_eq!(grid.rows.len(), 5);
+        assert_eq!(grid.rows.len(), 6);
     }
 
     #[test]
     fn default_grid_layout_correct() {
         let grid = Grid::default();
-        assert_eq!(grid.rows[0].cells[0].widget, "agent-list");
+        assert_eq!(grid.rows[0].cells[0].widget, WidgetId::AgentList);
         assert_eq!(grid.rows[0].cells[0].span, 2);
-        assert_eq!(grid.rows[0].cells[1].widget, "agent-pane");
+        assert_eq!(grid.rows[0].cells[1].widget, WidgetId::AgentPane);
         assert_eq!(grid.rows[0].cells[1].span, 10);
-        assert_eq!(grid.rows[0].cells[1].rowspan, 5);
-        assert_eq!(grid.rows[1].cells[0].widget, "token-chart");
+        assert_eq!(grid.rows[0].cells[1].rowspan, 6);
+        assert_eq!(grid.rows[1].cells[0].widget, WidgetId::TokenChart);
         assert_eq!(grid.rows[1].cells[0].span, 2);
-        assert_eq!(grid.rows[2].cells[0].widget, "recent-activity");
+        assert_eq!(grid.rows[2].cells[0].widget, WidgetId::ClassifierPanel);
         assert_eq!(grid.rows[2].cells[0].span, 2);
-        assert_eq!(grid.rows[3].cells[0].widget, "file-tree");
+        assert_eq!(grid.rows[3].cells[0].widget, WidgetId::RecentActivity);
         assert_eq!(grid.rows[3].cells[0].span, 2);
-        assert_eq!(grid.rows[4].cells[0].widget, "status-bar");
+        assert_eq!(grid.rows[4].cells[0].widget, WidgetId::FileTree);
         assert_eq!(grid.rows[4].cells[0].span, 2);
+        assert_eq!(grid.rows[5].cells[0].widget, WidgetId::StatusBar);
+        assert_eq!(grid.rows[5].cells[0].span, 2);
     }
 
     #[test]
@@ -262,12 +287,12 @@ mod tests {
                     height: Size::Fixed(10),
                     cells: vec![
                         Cell {
-                            widget: "a".to_string(),
+                            widget: WidgetId::AgentList,
                             span: 4,
                             rowspan: 1,
                         },
                         Cell {
-                            widget: "b".to_string(),
+                            widget: WidgetId::AgentPane,
                             span: 8,
                             rowspan: 2,
                         },
@@ -276,7 +301,7 @@ mod tests {
                 Row {
                     height: Size::Fixed(20),
                     cells: vec![Cell {
-                        widget: "c".to_string(),
+                        widget: WidgetId::TokenChart,
                         span: 4,
                         rowspan: 1,
                     }],
@@ -288,14 +313,11 @@ mod tests {
         let rects = grid.compute_rects(area);
 
         assert_eq!(rects.len(), 3);
-        // a: row 0, col 0-3, height 10
-        assert_eq!(rects[0].widget, "a");
+        assert_eq!(rects[0].widget, WidgetId::AgentList);
         assert_eq!(rects[0].rect, Rect::new(0, 0, 40, 10));
-        // b: row 0, col 4-11, rowspan 2 -> height 30 (10+20)
-        assert_eq!(rects[1].widget, "b");
+        assert_eq!(rects[1].widget, WidgetId::AgentPane);
         assert_eq!(rects[1].rect, Rect::new(40, 0, 80, 30));
-        // c: row 1, col 0-3, height 20
-        assert_eq!(rects[2].widget, "c");
+        assert_eq!(rects[2].widget, WidgetId::TokenChart);
         assert_eq!(rects[2].rect, Rect::new(0, 10, 40, 20));
     }
 
@@ -308,12 +330,12 @@ mod tests {
                     height: Size::Fixed(10),
                     cells: vec![
                         Cell {
-                            widget: "a".to_string(),
+                            widget: WidgetId::AgentList,
                             span: 4,
                             rowspan: 1,
                         },
                         Cell {
-                            widget: "b".to_string(),
+                            widget: WidgetId::AgentPane,
                             span: 8,
                             rowspan: 1,
                         },
@@ -322,7 +344,7 @@ mod tests {
                 Row {
                     height: Size::Fixed(30),
                     cells: vec![Cell {
-                        widget: "c".to_string(),
+                        widget: WidgetId::TokenChart,
                         span: 12,
                         rowspan: 1,
                     }],
@@ -347,12 +369,12 @@ mod tests {
                 height: Size::Fixed(10),
                 cells: vec![
                     Cell {
-                        widget: "a".to_string(),
+                        widget: WidgetId::AgentList,
                         span: 5,
                         rowspan: 1,
                     },
                     Cell {
-                        widget: "b".to_string(),
+                        widget: WidgetId::AgentPane,
                         span: 7,
                         rowspan: 1,
                     },

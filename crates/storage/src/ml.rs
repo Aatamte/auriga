@@ -10,12 +10,13 @@ impl Database {
         &self,
         trace_id: TraceId,
         classifier_name: &str,
+        position: u32,
         label: &str,
     ) -> anyhow::Result<()> {
         self.conn.execute(
             "INSERT OR REPLACE INTO training_labels \
-             (trace_id, classifier_name, label) VALUES (?1, ?2, ?3)",
-            params![trace_id.0.to_string(), classifier_name, label],
+             (trace_id, classifier_name, position, label) VALUES (?1, ?2, ?3, ?4)",
+            params![trace_id.0.to_string(), classifier_name, position, label],
         )?;
         Ok(())
     }
@@ -23,21 +24,22 @@ impl Database {
     pub fn load_training_labels(
         &self,
         classifier_name: &str,
-    ) -> anyhow::Result<Vec<(TraceId, String)>> {
-        let mut stmt = self
-            .conn
-            .prepare("SELECT trace_id, label FROM training_labels WHERE classifier_name = ?1")?;
+    ) -> anyhow::Result<Vec<(TraceId, u32, String)>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT trace_id, position, label FROM training_labels WHERE classifier_name = ?1",
+        )?;
 
         let results = stmt
             .query_map(params![classifier_name], |row| {
                 let trace_id_str: String = row.get(0)?;
-                let label: String = row.get(1)?;
-                Ok((trace_id_str, label))
+                let position: u32 = row.get(1)?;
+                let label: String = row.get(2)?;
+                Ok((trace_id_str, position, label))
             })?
             .filter_map(|r| r.ok())
-            .filter_map(|(id_str, label)| {
+            .filter_map(|(id_str, position, label)| {
                 let uuid = Uuid::parse_str(&id_str).ok()?;
-                Some((TraceId(uuid), label))
+                Some((TraceId(uuid), position, label))
             })
             .collect();
 
@@ -181,13 +183,14 @@ mod tests {
         };
         db.save_trace(&trace, &[]).unwrap();
 
-        db.save_training_label(trace_id, "test-clf", "success")
+        db.save_training_label(trace_id, "test-clf", 5, "success")
             .unwrap();
 
         let labels = db.load_training_labels("test-clf").unwrap();
         assert_eq!(labels.len(), 1);
         assert_eq!(labels[0].0, trace_id);
-        assert_eq!(labels[0].1, "success");
+        assert_eq!(labels[0].1, 5);
+        assert_eq!(labels[0].2, "success");
     }
 
     #[test]
@@ -261,5 +264,71 @@ mod tests {
         let models = db.list_models("test").unwrap();
         assert_eq!(models.len(), 3);
         assert_eq!(models[0].version, 3); // desc order
+    }
+
+    #[test]
+    fn load_training_labels_empty_for_unknown_classifier() {
+        let db = Database::open_in_memory().unwrap();
+        let labels = db.load_training_labels("nonexistent").unwrap();
+        assert!(labels.is_empty());
+    }
+
+    #[test]
+    fn save_training_label_upserts_on_same_key() {
+        let db = Database::open_in_memory().unwrap();
+        let trace_id = TraceId::from_u128(1);
+
+        let trace = orchestrator_core::Trace {
+            id: trace_id,
+            agent_id: orchestrator_core::AgentId::from_u128(1),
+            session_id: "s1".into(),
+            status: orchestrator_core::TraceStatus::Complete,
+            started_at: "2026-01-01T00:00:00Z".into(),
+            completed_at: None,
+            turn_count: 0,
+            token_usage: orchestrator_core::TokenUsage {
+                input_tokens: 0,
+                output_tokens: 0,
+                cache_creation_input_tokens: None,
+                cache_read_input_tokens: None,
+            },
+            provider: "claude".into(),
+            model: None,
+        };
+        db.save_trace(&trace, &[]).unwrap();
+
+        db.save_training_label(trace_id, "clf", 1, "good").unwrap();
+        db.save_training_label(trace_id, "clf", 1, "bad").unwrap();
+
+        let labels = db.load_training_labels("clf").unwrap();
+        assert_eq!(labels.len(), 1);
+        assert_eq!(labels[0].2, "bad");
+    }
+
+    #[test]
+    fn save_model_with_no_accuracy() {
+        let db = Database::open_in_memory().unwrap();
+
+        let model = SavedModel {
+            id: "m-none".into(),
+            classifier_name: "test".into(),
+            version: 1,
+            created_at: "2026-01-01T00:00:00Z".into(),
+            feature_names: vec!["f1".into()],
+            model_data: "{}".into(),
+            accuracy: None,
+        };
+        db.save_model(&model).unwrap();
+
+        let loaded = db.load_latest_model("test").unwrap().unwrap();
+        assert!(loaded.accuracy.is_none());
+        assert_eq!(loaded.feature_names, vec!["f1"]);
+    }
+
+    #[test]
+    fn list_models_empty_for_unknown_classifier() {
+        let db = Database::open_in_memory().unwrap();
+        let models = db.list_models("nonexistent").unwrap();
+        assert!(models.is_empty());
     }
 }

@@ -86,3 +86,94 @@ impl Widget for AgentListWidget {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use orchestrator_core::{AgentId, AgentStore, FileTree, FocusState, TraceStore, TurnStore};
+    use std::path::PathBuf;
+
+    macro_rules! with_ctx {
+        ($agents:expr, |$ctx:ident| $body:expr) => {{
+            let agents = $agents;
+            let turns = TurnStore::new();
+            let traces = TraceStore::new();
+            let focus = FocusState::new();
+            let file_tree = FileTree::new(PathBuf::from("/tmp"));
+            let noop = |_: AgentId, _: &mut ratatui::buffer::Buffer, _: Rect| {};
+            let $ctx = RenderContext {
+                agents: &agents,
+                turns: &turns,
+                traces: &traces,
+                focus: &focus,
+                file_tree: &file_tree,
+                render_term: &noop,
+            };
+            $body
+        }};
+    }
+
+    #[test]
+    fn new_widget_has_zero_scroll_offset() {
+        let widget = AgentListWidget::new();
+        assert_eq!(widget.scroll.offset, 0);
+    }
+
+    #[test]
+    fn click_empty_list_returns_none() {
+        let mut widget = AgentListWidget::new();
+        with_ctx!(AgentStore::new(), |ctx| {
+            assert!(widget.handle_click(0, 0, &ctx).is_none());
+        });
+    }
+
+    #[test]
+    fn click_valid_agent_returns_select_action() {
+        let mut widget = AgentListWidget::new();
+        let mut agents = AgentStore::new();
+        let id = agents.create("claude");
+
+        with_ctx!(agents, |ctx| {
+            let action = widget.handle_click(0, 0, &ctx);
+            match action {
+                Some(WidgetAction::SelectAgent(selected_id)) => assert_eq!(selected_id, id),
+                _ => panic!("expected SelectAgent"),
+            }
+        });
+    }
+
+    #[test]
+    fn click_out_of_range_returns_none() {
+        let mut widget = AgentListWidget::new();
+        let mut agents = AgentStore::new();
+        agents.create("claude");
+
+        with_ctx!(agents, |ctx| {
+            assert!(widget.handle_click(5, 0, &ctx).is_none());
+        });
+    }
+
+    #[test]
+    fn scroll_updates_offset() {
+        let mut widget = AgentListWidget::new();
+        // Need items to scroll through
+        widget.scroll.set_item_count(20);
+        widget.scroll.set_visible_height(5);
+
+        widget.handle_scroll(ScrollDirection::Down);
+        assert_eq!(widget.scroll.offset, 1);
+
+        widget.handle_scroll(ScrollDirection::Up);
+        assert_eq!(widget.scroll.offset, 0);
+    }
+
+    #[test]
+    fn scroll_up_at_top_stays_at_zero() {
+        let mut widget = AgentListWidget::new();
+        widget.scroll.set_item_count(10);
+        widget.scroll.set_visible_height(5);
+
+        widget.handle_scroll(ScrollDirection::Up);
+        assert_eq!(widget.scroll.offset, 0);
+    }
+}

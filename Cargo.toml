@@ -35,3 +35,6 @@ tiny_http = "0.12"
 rusqlite = { version = "0.31", features = ["bundled"] }
 uuid = { version = "1", features = ["v4", "serde"] }
 self_update = { version = "0.41", features = ["archive-tar", "compression-flate2"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
+tracing-appender = "0.2"

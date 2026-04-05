@@ -472,4 +472,44 @@ mod tests {
         assert_eq!(loaded.turn_count, 10);
         assert_eq!(loaded.status, TraceStatus::Aborted);
     }
+
+    #[test]
+    fn save_trace_with_no_turns_and_load_turns_empty() {
+        let db = make_db();
+        let trace = sample_trace(agent(1));
+        db.save_trace(&trace, &[]).unwrap();
+
+        let loaded = db.load_trace(trace.id).unwrap().unwrap();
+        assert_eq!(loaded.id, trace.id);
+
+        let turns = db.load_turns(trace.id).unwrap();
+        assert!(turns.is_empty());
+    }
+
+    #[test]
+    fn list_traces_empty_database() {
+        let db = make_db();
+        let traces = db.list_traces(10, 0).unwrap();
+        assert!(traces.is_empty());
+    }
+
+    #[test]
+    fn list_agent_traces_empty_for_unknown_agent() {
+        let db = make_db();
+        let traces = db.list_agent_traces(agent(999)).unwrap();
+        assert!(traces.is_empty());
+    }
+
+    #[test]
+    fn save_trace_preserves_active_status() {
+        let db = make_db();
+        let mut trace = sample_trace(agent(1));
+        trace.status = TraceStatus::Active;
+        trace.completed_at = None;
+        db.save_trace(&trace, &[]).unwrap();
+
+        let loaded = db.load_trace(trace.id).unwrap().unwrap();
+        assert_eq!(loaded.status, TraceStatus::Active);
+        assert!(loaded.completed_at.is_none());
+    }
 }

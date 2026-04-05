@@ -48,6 +48,17 @@ impl DecisionTreeClassifier {
         })
     }
 
+    pub fn tree(&self) -> &DecisionTree<f64, usize> {
+        &self.tree
+    }
+
+    pub fn label_for_index(&self, idx: usize) -> String {
+        self.label_map
+            .get(idx)
+            .cloned()
+            .unwrap_or_else(|| format!("class_{}", idx))
+    }
+
     /// Serialize the tree + label map to a JSON string for storage.
     pub fn serialize(tree: &DecisionTree<f64, usize>, label_map: &[String]) -> Result<String> {
         let s = SerializedTree {
@@ -64,7 +75,7 @@ impl Classifier for DecisionTreeClassifier {
     }
 
     fn trigger(&self) -> ClassifierTrigger {
-        ClassifierTrigger::OnComplete
+        ClassifierTrigger::on_complete()
     }
 
     fn classify(&self, trace: &Trace, turns: &[Turn]) -> Vec<ClassificationResult> {
@@ -94,6 +105,7 @@ impl Classifier for DecisionTreeClassifier {
                 "predicted_label": predicted_label,
                 "predicted_index": predicted_idx,
             }),
+            notification: None,
         }]
     }
 }

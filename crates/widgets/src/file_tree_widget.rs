@@ -118,10 +118,84 @@ impl Widget for FileTreeWidget {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use orchestrator_core::{AgentId, AgentStore, FileTree, FocusState, TraceStore, TurnStore};
+    use std::path::PathBuf;
+
+    macro_rules! with_ctx {
+        ($tree:expr, |$ctx:ident| $body:expr) => {{
+            let agents = AgentStore::new();
+            let turns = TurnStore::new();
+            let traces = TraceStore::new();
+            let focus = FocusState::new();
+            let file_tree = $tree;
+            let noop = |_: AgentId, _: &mut ratatui::buffer::Buffer, _: Rect| {};
+            let $ctx = RenderContext {
+                agents: &agents,
+                turns: &turns,
+                traces: &traces,
+                focus: &focus,
+                file_tree: &file_tree,
+                render_term: &noop,
+            };
+            $body
+        }};
+    }
 
     #[test]
     fn default_creates_widget() {
         let widget = FileTreeWidget::default();
         assert_eq!(widget.scroll.offset, 0);
+    }
+
+    #[test]
+    fn scroll_updates_offset() {
+        let mut widget = FileTreeWidget::new();
+        widget.scroll.set_item_count(20);
+        widget.scroll.set_visible_height(5);
+
+        widget.handle_scroll(ScrollDirection::Down);
+        assert_eq!(widget.scroll.offset, 1);
+
+        widget.handle_scroll(ScrollDirection::Up);
+        assert_eq!(widget.scroll.offset, 0);
+    }
+
+    #[test]
+    fn click_empty_tree_returns_none() {
+        let mut widget = FileTreeWidget::new();
+        with_ctx!(FileTree::new(PathBuf::from("/tmp")), |ctx| {
+            assert!(widget.handle_click(0, 0, &ctx).is_none());
+        });
+    }
+
+    #[test]
+    fn click_on_non_dir_returns_none() {
+        let mut widget = FileTreeWidget::new();
+        let mut tree = FileTree::new(PathBuf::from("/tmp"));
+        tree.set_entries(vec![FileEntry::file(PathBuf::from("/tmp/hello.rs"), 0)]);
+        tree.refresh_caches();
+
+        with_ctx!(tree, |ctx| {
+            assert!(widget.handle_click(0, 0, &ctx).is_none());
+        });
+    }
+
+    #[test]
+    fn click_on_dir_returns_toggle_dir() {
+        let mut widget = FileTreeWidget::new();
+        let mut tree = FileTree::new(PathBuf::from("/tmp"));
+        tree.set_entries(vec![
+            FileEntry::dir(PathBuf::from("/tmp/src"), 0),
+            FileEntry::file(PathBuf::from("/tmp/src/main.rs"), 1),
+        ]);
+        tree.refresh_caches();
+
+        with_ctx!(tree, |ctx| {
+            let action = widget.handle_click(0, 0, &ctx);
+            match action {
+                Some(WidgetAction::ToggleDir(_)) => {}
+                _ => panic!("expected ToggleDir"),
+            }
+        });
     }
 }

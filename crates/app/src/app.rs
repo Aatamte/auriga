@@ -5,11 +5,16 @@ use alacritty_terminal::term::{Config as TermConfig, Term};
 use alacritty_terminal::vte;
 use anyhow::Result;
 use crossterm::event::Event;
-use orchestrator_classifier::ClassifierRegistry;
+use orchestrator_classifier::{
+    ClassifierRegistry, ClassifierTrigger, ClassifierType, CliRuntime, CliRuntimeConfig,
+    ConfigClassifier, LlmRuntimeStub,
+};
 use orchestrator_claude_log::{to_turn_builder, ClaudeWatchEvent, ClaudeWatchHandle};
 use orchestrator_core::{AgentId, AgentStore, FileTree, FocusState, TraceStore, TurnStore};
 use orchestrator_grid::CellRect;
+use orchestrator_mcp::doctor::{DoctorMcpServer, DoctorRequest, DoctorResponse};
 use orchestrator_mcp::{AgentInfo, McpEvent, McpRequest, McpResponse};
+use orchestrator_ml::MlRuntime;
 use orchestrator_pty::PtyHandle;
 use orchestrator_storage::{Database, StorageHandle};
 use orchestrator_widgets::{
@@ -47,10 +52,12 @@ pub struct App {
     pub last_cell_rects: Vec<CellRect>,
     pub last_nav_rect: Rect,
     pub classifier_registry: ClassifierRegistry,
+    pub doctor_mcp: Option<DoctorMcpServer>,
     pub running: bool,
 }
 
 impl App {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         input_rx: mpsc::Receiver<Event>,
         file_rx: mpsc::Receiver<FileEvent>,
@@ -79,7 +86,7 @@ impl App {
             db_path,
             focus: FocusState::new(),
             file_tree,
-            grid: orchestrator_grid::load_or_default(),
+            grid: config.layout.clone(),
             widgets,
             ptys: HashMap::new(),
             terms: HashMap::new(),
@@ -95,13 +102,67 @@ impl App {
             last_cell_rects: Vec::new(),
             last_nav_rect: Rect::default(),
             classifier_registry: ClassifierRegistry::new(),
+            doctor_mcp: None,
             running: true,
         }
     }
 
+    /// Load classifier configs from `.agent-orchestrator/classifiers/` and register them.
+    pub fn load_classifier_configs(&mut self) {
+        let classifiers_dir = crate::config::dir_path().join("classifiers");
+        let configs = orchestrator_classifier::config::load_configs(&classifiers_dir);
+        for (_path, config) in configs {
+            // Skip if already registered (avoids duplicates on reload)
+            if self
+                .classifier_registry
+                .names()
+                .contains(&config.name.as_str())
+            {
+                continue;
+            }
+
+            let enabled = config.enabled;
+            let name = config.name.clone();
+
+            let label_names: Vec<String> = config.labels.iter().map(|l| l.label.clone()).collect();
+            let runtime: Option<Box<dyn orchestrator_classifier::ClassifierRuntime>> =
+                match config.classifier_type {
+                    ClassifierType::Ml => self.resolve_ml_runtime(&name),
+                    ClassifierType::Llm => Some(Box::new(LlmRuntimeStub)),
+                    ClassifierType::Cli => {
+                        serde_json::from_value::<CliRuntimeConfig>(config.runtime.clone())
+                            .ok()
+                            .map(|cfg| {
+                                Box::new(CliRuntime::new(cfg, label_names))
+                                    as Box<dyn orchestrator_classifier::ClassifierRuntime>
+                            })
+                    }
+                };
+
+            let mut classifier = ConfigClassifier::new(config);
+            if let Some(rt) = runtime {
+                classifier = classifier.with_runtime(rt);
+            }
+
+            self.classifier_registry.register(Box::new(classifier));
+            if !enabled {
+                self.classifier_registry.set_enabled(&name, false);
+            }
+        }
+    }
+
+    fn resolve_ml_runtime(
+        &self,
+        classifier_name: &str,
+    ) -> Option<Box<dyn orchestrator_classifier::ClassifierRuntime>> {
+        let model = self.db_reader.load_latest_model(classifier_name).ok()??;
+        let runtime = MlRuntime::from_saved_model(&model).ok()?;
+        Some(Box::new(runtime))
+    }
+
     pub fn pane_size(&self) -> (u16, u16) {
         for cell in &self.last_cell_rects {
-            if cell.widget == "agent-pane" {
+            if cell.widget == orchestrator_grid::WidgetId::AgentPane {
                 let cols = cell.rect.width.saturating_sub(2).max(1);
                 let rows = cell.rect.height.saturating_sub(2).max(1);
                 return (cols, rows);
@@ -192,6 +253,15 @@ impl App {
                     .cloned()
                     .collect();
                 let results = self.classifier_registry.run_on_complete(&trace, &turns);
+                for result in &results {
+                    if let Some(ref notif) = result.notification {
+                        let xml = notif
+                            .format_xml(&result.classifier_name, &result.trace_id.0.to_string());
+                        if let Some(pty) = self.ptys.get_mut(&agent_id) {
+                            let _ = pty.write_input(xml.as_bytes());
+                        }
+                    }
+                }
                 for result in results {
                     self.storage.save_classification(result);
                 }
@@ -257,7 +327,9 @@ impl App {
             match event {
                 FileEvent::Modified(ref path) | FileEvent::Created(ref path) => {
                     self.file_tree.record_activity(path, active_agent);
-                    let _ = self.diff_tx.send(path.clone());
+                    if self.diff_tx.send(path.clone()).is_err() {
+                        tracing::warn!("diff thread gone, dropping file event");
+                    }
                 }
                 FileEvent::Removed(ref path) => {
                     self.file_tree.remove_entry(path);
@@ -265,7 +337,9 @@ impl App {
                 FileEvent::Renamed(ref from, ref to) => {
                     self.file_tree.remove_entry(from);
                     self.file_tree.record_activity(to, active_agent);
-                    let _ = self.diff_tx.send(to.clone());
+                    if self.diff_tx.send(to.clone()).is_err() {
+                        tracing::warn!("diff thread gone, dropping file event");
+                    }
                 }
             }
         }
@@ -373,6 +447,17 @@ impl App {
                         let results = self
                             .classifier_registry
                             .run_incremental(&trace_clone, &turns);
+                        for result in &results {
+                            if let Some(ref notif) = result.notification {
+                                let xml = notif.format_xml(
+                                    &result.classifier_name,
+                                    &result.trace_id.0.to_string(),
+                                );
+                                if let Some(pty) = self.ptys.get_mut(&agent_id) {
+                                    let _ = pty.write_input(xml.as_bytes());
+                                }
+                            }
+                        }
                         for result in results {
                             self.storage.save_classification(result);
                         }
@@ -397,7 +482,9 @@ impl App {
                             status: format!("{:?}", a.status),
                         })
                         .collect();
-                    let _ = event.response_tx.send(McpResponse::Agents(agents));
+                    if event.response_tx.send(McpResponse::Agents(agents)).is_err() {
+                        tracing::warn!("MCP response channel closed");
+                    }
                 }
                 McpRequest::SendMessage {
                     from_agent_name,
@@ -411,31 +498,27 @@ impl App {
                         .find(|a| a.name == to_agent_name)
                         .map(|a| a.id);
 
-                    match target {
+                    let resp = match target {
                         Some(id) => {
                             if let Some(pty) = self.ptys.get_mut(&id) {
                                 let data =
                                     format!("[Message from {}]: {}\r", from_agent_name, message);
                                 if let Err(e) = pty.write_input(data.as_bytes()) {
-                                    let _ = event
-                                        .response_tx
-                                        .send(McpResponse::Error(format!("Write failed: {}", e)));
+                                    McpResponse::Error(format!("Write failed: {}", e))
                                 } else {
-                                    let _ = event.response_tx.send(McpResponse::MessageSent);
+                                    McpResponse::MessageSent
                                 }
                             } else {
-                                let _ = event.response_tx.send(McpResponse::Error(format!(
+                                McpResponse::Error(format!(
                                     "Agent '{}' has no active PTY",
                                     to_agent_name
-                                )));
+                                ))
                             }
                         }
-                        None => {
-                            let _ = event.response_tx.send(McpResponse::Error(format!(
-                                "No agent named '{}'",
-                                to_agent_name
-                            )));
-                        }
+                        None => McpResponse::Error(format!("No agent named '{}'", to_agent_name)),
+                    };
+                    if event.response_tx.send(resp).is_err() {
+                        tracing::warn!("MCP response channel closed");
                     }
                 }
             }
@@ -459,18 +542,20 @@ impl App {
     pub fn write_to_active(&mut self, data: &[u8]) {
         if let Some(id) = self.focus.active_agent {
             if let Some(pty) = self.ptys.get_mut(&id) {
-                let _ = pty.write_input(data);
+                if let Err(e) = pty.write_input(data) {
+                    tracing::warn!(error = %e, "PTY write failed");
+                }
             }
         }
     }
 
-    pub fn hit_test(&self, col: u16, row: u16) -> Option<(String, u16, u16)> {
+    pub fn hit_test(&self, col: u16, row: u16) -> Option<(orchestrator_grid::WidgetId, u16, u16)> {
         for cell in &self.last_cell_rects {
             let r = &cell.rect;
             if col >= r.x && col < r.x + r.width && row >= r.y && row < r.y + r.height {
                 let local_row = (row - r.y).saturating_sub(1);
                 let local_col = (col - r.x).saturating_sub(1);
-                return Some((cell.widget.clone(), local_row, local_col));
+                return Some((cell.widget, local_row, local_col));
             }
         }
         None
@@ -481,7 +566,9 @@ impl App {
         let ids: Vec<AgentId> = self.ptys.keys().copied().collect();
         for id in ids {
             if let Some(pty) = self.ptys.get(&id) {
-                let _ = pty.resize(cols, rows);
+                if let Err(e) = pty.resize(cols, rows) {
+                    tracing::debug!(error = %e, "PTY resize failed");
+                }
             }
             if let Some(term) = self.terms.get_mut(&id) {
                 let size = TermSize {
@@ -534,6 +621,11 @@ impl App {
                     self.widgets.settings_page.mark_saved();
                 }
             }
+            WidgetAction::StartDoctor => {
+                if let Err(e) = self.start_doctor() {
+                    tracing::error!(error = %e, "failed to start doctor");
+                }
+            }
             WidgetAction::ToggleClassifier(name) => {
                 let currently_enabled = self.classifier_registry.is_enabled(&name);
                 self.classifier_registry
@@ -547,7 +639,9 @@ impl App {
                     .filter(|c| !c.enabled)
                     .map(|c| c.name.clone())
                     .collect();
-                let _ = crate::config::save(&config);
+                if let Err(e) = crate::config::save(&config) {
+                    tracing::warn!(error = %e, "failed to save config");
+                }
             }
         }
     }
@@ -562,6 +656,134 @@ impl App {
             }
         };
         self.widgets.agent_pane.set_mode(new_mode);
+    }
+
+    pub fn start_doctor(&mut self) -> Result<()> {
+        // Start doctor MCP server
+        let classifiers_dir = crate::config::dir_path().join("classifiers");
+        let doctor = orchestrator_mcp::doctor::start_doctor_mcp(&self.db_path, classifiers_dir)?;
+
+        // Write temporary MCP config pointing to the doctor server
+        let config_path = crate::config::dir_path().join("doctor-mcp.json");
+        let config = serde_json::json!({
+            "mcpServers": {
+                "doctor": {
+                    "type": "http",
+                    "url": format!("http://127.0.0.1:{}", doctor.port),
+                    "autoApprove": ["list_traces", "get_trace", "list_classifiers", "create_classifier", "label_trace", "list_training_labels", "train_classifier"]
+                }
+            }
+        });
+        std::fs::write(&config_path, serde_json::to_string_pretty(&config)?)?;
+
+        // Write the /aorch-review slash command
+        let commands_dir = std::env::current_dir()?.join(".claude/commands");
+        std::fs::create_dir_all(&commands_dir)?;
+        let skill_path = commands_dir.join("aorch-review.md");
+        std::fs::write(
+            &skill_path,
+            concat!(
+                "Review agent traces and diagnose issues.\n\n",
+                "Steps:\n",
+                "1. Use list_classifiers to see what classifiers are registered and their status.\n",
+                "2. Use list_traces to get recent agent sessions.\n",
+                "3. For each trace with high token usage or many turns, use get_trace to inspect the full conversation.\n",
+                "4. Look for patterns: excessive token usage, repeated errors, looping behavior, classifier flags, aborted sessions.\n",
+                "5. Produce a diagnosis report with:\n",
+                "   - Summary of traces reviewed\n",
+                "   - Any anomalies or issues found\n",
+                "   - Token usage analysis (totals, averages, outliers)\n",
+                "   - Classifier findings\n",
+                "   - Recommendations\n",
+            ),
+        )?;
+
+        // Spawn claude with --mcp-config and --system-prompt
+        let id = self.agents.create("claude");
+        let agent_name = self
+            .agents
+            .get(id)
+            .expect("agent just created")
+            .name
+            .clone();
+        let cwd = std::env::current_dir()?;
+        let (cols, rows) = self.pane_size();
+        let config_str = config_path.to_string_lossy().to_string();
+        let system_prompt = concat!(
+            "You are the doctor agent for an AI agent orchestrator. ",
+            "Your job is to analyze agent traces, turns, and classifier results ",
+            "to diagnose issues, identify patterns, and provide actionable insights.\n\n",
+            "You have access to these MCP tools:\n",
+            "- list_traces: Browse recent agent sessions with token usage and status\n",
+            "- get_trace: Drill into a specific trace to see all turns and classifications\n",
+            "- list_classifiers: See registered classifiers and their status\n",
+            "- create_classifier: Create a new classifier config with name, trigger, type, and output labels\n",
+            "- label_trace: Assign a training label to a trace for a specific classifier\n",
+            "- list_training_labels: See labeled traces and label distribution for a classifier\n",
+            "- train_classifier: Train an ML classifier using labeled traces\n\n",
+            "You also have the /aorch-review skill which provides a step-by-step review workflow.\n\n",
+            "Start by understanding what data is available, then analyze patterns ",
+            "like excessive token usage, repeated errors, classifier flags, or unusual behavior.",
+        );
+        let pty = PtyHandle::spawn_with_args(
+            "claude",
+            &[
+                "--mcp-config",
+                &config_str,
+                "--system-prompt",
+                system_prompt,
+            ],
+            &cwd,
+            cols,
+            rows,
+            &[("ORCHESTRATOR_AGENT_NAME", &agent_name)],
+        )?;
+
+        if let Some(pid) = pty.child_pid() {
+            if let Some(agent) = self.agents.get_mut(id) {
+                agent.child_pid = Some(pid);
+            }
+            self.pid_map.insert(pid, id);
+        }
+
+        let term_config = TermConfig {
+            scrolling_history: 10_000,
+            ..Default::default()
+        };
+        let term_size = TermSize {
+            cols: cols as usize,
+            lines: rows as usize,
+        };
+        let term = Term::new(term_config, &term_size, EventProxy);
+        self.ptys.insert(id, pty);
+        self.terms.insert(id, term);
+        self.vte_parsers.insert(id, vte::ansi::Processor::new());
+
+        self.widgets.doctor_page.set_agent(id);
+        self.doctor_mcp = Some(doctor);
+
+        Ok(())
+    }
+
+    pub fn poll_doctor_events(&mut self) {
+        let Some(ref doctor) = self.doctor_mcp else {
+            return;
+        };
+        let events: Vec<_> = std::iter::from_fn(|| doctor.rx.try_recv().ok()).collect();
+        for event in events {
+            match event.request {
+                DoctorRequest::ListClassifiers => {
+                    let classifiers = self.classifier_registry.classifiers_info();
+                    let _ = event
+                        .response_tx
+                        .send(DoctorResponse::Classifiers(classifiers));
+                }
+                DoctorRequest::ReloadClassifiers => {
+                    self.load_classifier_configs();
+                    let _ = event.response_tx.send(DoctorResponse::Ok);
+                }
+            }
+        }
     }
 
     pub fn refresh_database(&mut self) {
@@ -592,8 +814,8 @@ impl App {
         }
     }
 
-    pub fn refresh_classifiers(&mut self) {
-        use orchestrator_widgets::{ClassificationResultView, ClassifierStatusView};
+    pub fn refresh_classifier_panel(&mut self) {
+        use orchestrator_widgets::ClassifierStatusView;
 
         let statuses: Vec<ClassifierStatusView> = self
             .classifier_registry
@@ -601,24 +823,41 @@ impl App {
             .into_iter()
             .map(|c| ClassifierStatusView {
                 name: c.name,
-                trigger: format!("{:?}", c.trigger),
+                trigger: c.trigger.display_name(),
                 enabled: c.enabled,
             })
             .collect();
-        self.widgets.classifiers_page.set_classifiers(statuses);
+        self.widgets.classifier_panel.set_classifiers(statuses);
+    }
 
-        if let Ok(results) = self.db_reader.list_recent_classifications(50) {
-            let views: Vec<ClassificationResultView> = results
-                .into_iter()
-                .map(|r| ClassificationResultView {
-                    classifier_name: r.classifier_name,
-                    trace_id: r.trace_id.0.to_string(),
-                    timestamp: r.timestamp,
-                    payload: serde_json::to_string(&r.payload).unwrap_or_default(),
-                })
-                .collect();
-            self.widgets.classifiers_page.set_results(views);
-        }
+    pub fn refresh_classifiers(&mut self) {
+        use orchestrator_widgets::{ClassifierDetailView, LabelView};
+
+        let details: Vec<ClassifierDetailView> = self
+            .classifier_registry
+            .classifiers_with_configs()
+            .into_iter()
+            .map(|(enabled, cfg)| {
+                let trigger: ClassifierTrigger = cfg.trigger.clone().into();
+                ClassifierDetailView {
+                    name: cfg.name.clone(),
+                    description: cfg.description.clone(),
+                    version: cfg.version.clone(),
+                    classifier_type: format!("{:?}", cfg.classifier_type).to_lowercase(),
+                    trigger: trigger.display_name(),
+                    enabled,
+                    labels: cfg
+                        .labels
+                        .iter()
+                        .map(|l| LabelView {
+                            label: l.label.clone(),
+                            notification: l.notification.message.clone(),
+                        })
+                        .collect(),
+                }
+            })
+            .collect();
+        self.widgets.classifiers_page.set_classifiers(details);
     }
 }
 
@@ -632,10 +871,7 @@ fn config_to_fields(config: &crate::config::Config) -> Vec<SettingsField> {
 }
 
 fn fields_to_config(values: &[(&str, &str)]) -> crate::config::Config {
-    let mut config = crate::config::Config {
-        mcp_port: 7850,
-        disabled_classifiers: Vec::new(),
-    };
+    let mut config = crate::config::Config::default();
     for &(key, val) in values {
         if key == "mcp_port" {
             if let Ok(port) = val.parse::<u16>() {

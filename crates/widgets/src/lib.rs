@@ -1,7 +1,9 @@
 mod agent_list;
 pub mod agent_pane;
+mod classifier_panel;
 mod classifiers_page;
 mod database_page;
+mod doctor_page;
 mod file_tree_widget;
 pub mod nav_bar;
 mod recent_activity;
@@ -11,13 +13,18 @@ mod token_chart;
 
 pub use agent_list::AgentListWidget;
 pub use agent_pane::AgentPaneWidget;
-pub use classifiers_page::{ClassificationResultView, ClassifierStatusView, ClassifiersPage};
+pub use classifier_panel::ClassifierPanelWidget;
+pub use classifiers_page::{
+    ClassifierDetailView, ClassifierStatusView, ClassifiersPage, LabelView,
+};
 pub use database_page::{
     DatabasePage, DbMetadata as DbMetadataView, QueryResult as QueryResultView,
     TableInfo as TableInfoView,
 };
+pub use doctor_page::DoctorPage;
 pub use file_tree_widget::FileTreeWidget;
 pub use nav_bar::NavBarWidget;
+pub use orchestrator_grid::WidgetId;
 pub use recent_activity::RecentActivityWidget;
 pub use settings_page::{SettingsField, SettingsPage};
 pub use status_bar::StatusBarWidget;
@@ -71,6 +78,7 @@ pub enum WidgetAction {
         offset: u64,
     },
     ToggleClassifier(String),
+    StartDoctor,
 }
 
 pub struct WidgetRegistry {
@@ -84,6 +92,8 @@ pub struct WidgetRegistry {
     pub settings_page: SettingsPage,
     pub database_page: DatabasePage,
     pub classifiers_page: ClassifiersPage,
+    pub classifier_panel: ClassifierPanelWidget,
+    pub doctor_page: DoctorPage,
 }
 
 impl WidgetRegistry {
@@ -99,21 +109,23 @@ impl WidgetRegistry {
             settings_page: SettingsPage::new(),
             database_page: DatabasePage::new(),
             classifiers_page: ClassifiersPage::new(),
+            classifier_panel: ClassifierPanelWidget::new(),
+            doctor_page: DoctorPage::new(),
         }
     }
 
-    pub fn get_mut(&mut self, name: &str) -> Option<&mut dyn Widget> {
-        match name {
-            "agent-list" => Some(&mut self.agent_list),
-            "agent-pane" => Some(&mut self.agent_pane),
-            "token-chart" => Some(&mut self.token_chart),
-            "recent-activity" => Some(&mut self.recent_activity),
-            "file-tree" => Some(&mut self.file_tree),
-            "status-bar" => Some(&mut self.status_bar),
-            "settings-page" => Some(&mut self.settings_page),
-            "database-page" => Some(&mut self.database_page),
-            "classifiers-page" => Some(&mut self.classifiers_page),
-            _ => None,
+    pub fn get_mut(&mut self, id: WidgetId) -> &mut dyn Widget {
+        match id {
+            WidgetId::AgentList => &mut self.agent_list,
+            WidgetId::AgentPane => &mut self.agent_pane,
+            WidgetId::TokenChart => &mut self.token_chart,
+            WidgetId::RecentActivity => &mut self.recent_activity,
+            WidgetId::FileTree => &mut self.file_tree,
+            WidgetId::StatusBar => &mut self.status_bar,
+            WidgetId::SettingsPage => &mut self.settings_page,
+            WidgetId::DatabasePage => &mut self.database_page,
+            WidgetId::ClassifiersPage => &mut self.classifiers_page,
+            WidgetId::ClassifierPanel => &mut self.classifier_panel,
         }
     }
 }
@@ -176,5 +188,48 @@ mod tests {
     fn format_tokens_millions() {
         assert_eq!(format_tokens(1_000_000), "1.0M");
         assert_eq!(format_tokens(2_500_000), "2.5M");
+    }
+
+    #[test]
+    fn activity_color_none_age_returns_dark_gray() {
+        assert_eq!(activity_color(None, 0), Color::DarkGray);
+        assert_eq!(activity_color(None, 100), Color::DarkGray);
+    }
+
+    #[test]
+    fn activity_color_recent_is_red() {
+        assert_eq!(activity_color(Some(1.0), 0), Color::Red);
+        assert_eq!(activity_color(Some(4.9), 0), Color::Red);
+    }
+
+    #[test]
+    fn activity_color_medium_is_yellow() {
+        assert_eq!(activity_color(Some(10.0), 0), Color::Yellow);
+    }
+
+    #[test]
+    fn activity_color_old_is_dark_gray() {
+        assert_eq!(activity_color(Some(1000.0), 0), Color::DarkGray);
+    }
+
+    #[test]
+    fn activity_color_high_modify_count_boosts() {
+        // 100s / 3.0 boost = 33.3 effective -> Green (30..120)
+        assert_eq!(activity_color(Some(100.0), 15), Color::Green);
+        // Without boost, 100s -> Green (30..120) too, but let's try 200s
+        // 200s / 1.0 = 200 -> Cyan
+        assert_eq!(activity_color(Some(200.0), 0), Color::Cyan);
+        // 200s / 3.0 = 66.7 -> Green (still in 30..120)
+        assert_eq!(activity_color(Some(200.0), 15), Color::Green);
+    }
+
+    #[test]
+    fn widget_registry_creates_all_widgets() {
+        let registry = WidgetRegistry::new();
+        // Just verify construction succeeds and get_mut works
+        let mut registry = registry;
+        let _ = registry.get_mut(WidgetId::AgentList);
+        let _ = registry.get_mut(WidgetId::AgentPane);
+        let _ = registry.get_mut(WidgetId::TokenChart);
     }
 }

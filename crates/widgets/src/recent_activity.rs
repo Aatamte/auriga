@@ -114,10 +114,55 @@ impl Widget for RecentActivityWidget {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use orchestrator_core::{AgentId, AgentStore, FileTree, FocusState, TraceStore, TurnStore};
+    use ratatui::layout::Rect;
+    use std::path::PathBuf;
+
+    macro_rules! with_ctx {
+        (|$ctx:ident| $body:expr) => {{
+            let agents = AgentStore::new();
+            let turns = TurnStore::new();
+            let traces = TraceStore::new();
+            let focus = FocusState::new();
+            let file_tree = FileTree::new(PathBuf::from("/tmp"));
+            let noop = |_: AgentId, _: &mut ratatui::buffer::Buffer, _: Rect| {};
+            let $ctx = RenderContext {
+                agents: &agents,
+                turns: &turns,
+                traces: &traces,
+                focus: &focus,
+                file_tree: &file_tree,
+                render_term: &noop,
+            };
+            $body
+        }};
+    }
 
     #[test]
     fn default_creates_widget() {
         let widget = RecentActivityWidget::default();
+        assert_eq!(widget.scroll.offset, 0);
+    }
+
+    #[test]
+    fn click_always_returns_none() {
+        let mut widget = RecentActivityWidget::new();
+        with_ctx!(|ctx| {
+            assert!(widget.handle_click(0, 0, &ctx).is_none());
+            assert!(widget.handle_click(5, 10, &ctx).is_none());
+        });
+    }
+
+    #[test]
+    fn scroll_updates_offset() {
+        let mut widget = RecentActivityWidget::new();
+        widget.scroll.set_item_count(20);
+        widget.scroll.set_visible_height(5);
+
+        widget.handle_scroll(ScrollDirection::Down);
+        assert_eq!(widget.scroll.offset, 1);
+
+        widget.handle_scroll(ScrollDirection::Up);
         assert_eq!(widget.scroll.offset, 0);
     }
 }

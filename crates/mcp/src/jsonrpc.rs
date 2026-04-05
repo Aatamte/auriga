@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 /// An incoming JSON-RPC 2.0 request.
 #[derive(Debug, Deserialize)]
 pub struct Request {
+    #[allow(dead_code)]
     pub jsonrpc: String,
     pub id: Option<serde_json::Value>,
     pub method: String,
@@ -50,6 +51,7 @@ impl Response {
 
 impl Request {
     /// Returns true if this is a notification (no id, no response expected).
+    #[allow(dead_code)]
     pub fn is_notification(&self) -> bool {
         self.id.is_none()
     }

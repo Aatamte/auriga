@@ -1,5 +1,6 @@
+pub mod doctor;
 mod handler;
-mod jsonrpc;
+pub(crate) mod jsonrpc;
 
 use serde::Serialize;
 use std::sync::mpsc;
@@ -63,7 +64,9 @@ pub fn start_mcp_server(port: u16) -> anyhow::Result<McpServer> {
                         tiny_http::Header::from_bytes(&b"Content-Type"[..], &b"text/plain"[..])
                             .unwrap(),
                     );
-                let _ = request.respond(resp);
+                if let Err(e) = request.respond(resp) {
+                    tracing::warn!(error = %e, "failed to send HTTP response");
+                }
                 continue;
             }
 
@@ -71,7 +74,9 @@ pub fn start_mcp_server(port: u16) -> anyhow::Result<McpServer> {
             let mut body = String::new();
             if request.as_reader().read_to_string(&mut body).is_err() {
                 let resp = tiny_http::Response::from_string("Bad request").with_status_code(400);
-                let _ = request.respond(resp);
+                if let Err(e) = request.respond(resp) {
+                    tracing::warn!(error = %e, "failed to send HTTP response");
+                }
                 continue;
             }
 
@@ -88,7 +93,9 @@ pub fn start_mcp_server(port: u16) -> anyhow::Result<McpServer> {
                         )
                         .unwrap(),
                     );
-                    let _ = request.respond(resp);
+                    if let Err(e) = request.respond(resp) {
+                        tracing::warn!(error = %e, "failed to send HTTP response");
+                    }
                     continue;
                 }
             };
@@ -107,12 +114,16 @@ pub fn start_mcp_server(port: u16) -> anyhow::Result<McpServer> {
                         )
                         .unwrap(),
                     );
-                    let _ = request.respond(resp);
+                    if let Err(e) = request.respond(resp) {
+                        tracing::warn!(error = %e, "failed to send HTTP response");
+                    }
                 }
                 None => {
                     // Notification — respond with 204 No Content
                     let resp = tiny_http::Response::empty(204);
-                    let _ = request.respond(resp);
+                    if let Err(e) = request.respond(resp) {
+                        tracing::warn!(error = %e, "failed to send HTTP response");
+                    }
                 }
             }
         }

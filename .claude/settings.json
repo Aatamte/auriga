@@ -10,10 +10,15 @@
       "patterns": [
         "cargo build",
         "cargo test",
+        "cargo test *",
         "cargo run",
         "cargo clippy",
+        "cargo clippy *",
         "cargo fmt",
+        "cargo fmt *",
         "cargo clean",
+        "cargo info *",
+        "cargo search *",
         "git status",
         "git log",
         "git diff",
@@ -30,7 +35,8 @@
         "cat",
         "head",
         "tail",
-        "wc"
+        "wc",
+        "grep"
       ]
     },
     "taskCreate": true,
