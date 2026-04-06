@@ -80,6 +80,7 @@ pub enum WidgetAction {
     ToggleClassifier(String),
     ToggleSkill(String),
     ToggleSystemPrompt(String),
+    ToggleContextInjection,
     StartDoctor,
 }
 

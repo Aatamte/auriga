@@ -42,6 +42,50 @@ fn default_provider_config() -> serde_json::Value {
     serde_json::Value::Object(serde_json::Map::new())
 }
 
+/// Builder for composing a system prompt from multiple sections.
+/// Sections are joined with `\n\n---\n\n`. Empty strings are ignored.
+pub struct SystemPromptBuilder {
+    sections: Vec<String>,
+}
+
+impl SystemPromptBuilder {
+    pub fn new() -> Self {
+        Self {
+            sections: Vec::new(),
+        }
+    }
+
+    /// Append a named section. Empty content is skipped.
+    pub fn section(mut self, content: &str) -> Self {
+        if !content.is_empty() {
+            self.sections.push(content.to_string());
+        }
+        self
+    }
+
+    /// Append a named section with a header. Empty content is skipped.
+    pub fn titled_section(mut self, title: &str, content: &str) -> Self {
+        if !content.is_empty() {
+            self.sections.push(format!("# {}\n\n{}", title, content));
+        }
+        self
+    }
+
+    pub fn build(self) -> Option<String> {
+        if self.sections.is_empty() {
+            None
+        } else {
+            Some(self.sections.join("\n\n---\n\n"))
+        }
+    }
+}
+
+impl Default for SystemPromptBuilder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -98,5 +142,57 @@ mod tests {
         assert!(config.system_prompt.is_none());
         assert!(config.temperature.is_none());
         assert!(config.provider_config.is_object());
+    }
+
+    #[test]
+    fn prompt_builder_empty_is_none() {
+        assert!(SystemPromptBuilder::new().build().is_none());
+    }
+
+    #[test]
+    fn prompt_builder_skips_empty_sections() {
+        let result = SystemPromptBuilder::new()
+            .section("")
+            .section("")
+            .build();
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn prompt_builder_single_section() {
+        let result = SystemPromptBuilder::new()
+            .section("You are helpful.")
+            .build();
+        assert_eq!(result.unwrap(), "You are helpful.");
+    }
+
+    #[test]
+    fn prompt_builder_joins_with_separator() {
+        let result = SystemPromptBuilder::new()
+            .section("Be helpful.")
+            .section("Be concise.")
+            .build()
+            .unwrap();
+        assert_eq!(result, "Be helpful.\n\n---\n\nBe concise.");
+    }
+
+    #[test]
+    fn prompt_builder_titled_section() {
+        let result = SystemPromptBuilder::new()
+            .section("Base prompt.")
+            .titled_section("Repository Context", "This is a Rust project.")
+            .build()
+            .unwrap();
+        assert!(result.contains("# Repository Context"));
+        assert!(result.contains("This is a Rust project."));
+        assert!(result.contains("---"));
+    }
+
+    #[test]
+    fn prompt_builder_titled_section_skips_empty() {
+        let result = SystemPromptBuilder::new()
+            .titled_section("Context", "")
+            .build();
+        assert!(result.is_none());
     }
 }

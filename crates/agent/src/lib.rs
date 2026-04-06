@@ -9,7 +9,7 @@ mod tool;
 
 pub use bridge::{response_to_turn, role_to_turn_role, user_message_to_turn};
 pub use command::CommandSpec;
-pub use config::{AgentConfig, AgentMode};
+pub use config::{AgentConfig, AgentMode, SystemPromptBuilder};
 pub use message::{GenerateRequest, GenerateResponse, Message, Role};
 pub use provider::{GenerateError, Provider};
 pub use session::{Session, SessionId, SessionStatus};

@@ -33,6 +33,7 @@ enum Section {
 
 pub struct PromptsPage {
     pub system_prompts: Vec<SystemPromptEntry>,
+    pub context_enabled: bool,
     pub skills: Vec<SkillStatus>,
     selected: usize,
     scroll: Scrollable,
@@ -42,6 +43,7 @@ impl PromptsPage {
     pub fn new() -> Self {
         Self {
             system_prompts: Vec::new(),
+            context_enabled: true,
             skills: Vec::new(),
             selected: 0,
             scroll: Scrollable::new(),
@@ -58,8 +60,9 @@ impl PromptsPage {
         self.clamp_selection();
     }
 
+    /// System prompts count + 1 context toggle + skills count.
     fn total_items(&self) -> usize {
-        self.system_prompts.len() + self.skills.len()
+        self.system_prompts.len() + 1 + self.skills.len()
     }
 
     fn clamp_selection(&mut self) {
@@ -71,12 +74,22 @@ impl PromptsPage {
         }
     }
 
-    /// Map a flat selection index to (section, index within section).
+    fn context_toggle_idx(&self) -> usize {
+        self.system_prompts.len()
+    }
+
+    fn skills_start(&self) -> usize {
+        self.system_prompts.len() + 1
+    }
+
     fn selected_item(&self) -> Option<(Section, usize)> {
         if self.selected < self.system_prompts.len() {
             Some((Section::SystemPrompts, self.selected))
+        } else if self.selected == self.context_toggle_idx() {
+            // Context toggle lives at the end of SystemPrompts section
+            Some((Section::SystemPrompts, self.selected))
         } else {
-            let idx = self.selected - self.system_prompts.len();
+            let idx = self.selected - self.skills_start();
             if idx < self.skills.len() {
                 Some((Section::Skills, idx))
             } else {
@@ -99,6 +112,9 @@ impl PromptsPage {
                 }
             }
             KeyCode::Enter | KeyCode::Char(' ') => {
+                if self.selected == self.context_toggle_idx() {
+                    return Some(WidgetAction::ToggleContextInjection);
+                }
                 if let Some((section, idx)) = self.selected_item() {
                     return match section {
                         Section::SystemPrompts => {
@@ -144,6 +160,32 @@ impl PromptsPage {
             }
         }
 
+        // Context injection toggle — last item in System Prompts section
+        let ctx_selected = self.selected == self.context_toggle_idx();
+        let ctx_checkbox = if self.context_enabled { "[x]" } else { "[ ]" };
+        let ctx_check_color = if self.context_enabled { Color::Green } else { Color::DarkGray };
+        let ctx_name_style = if ctx_selected {
+            Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)
+        } else {
+            Style::default().fg(Color::White)
+        };
+        lines.push(Line::from(vec![
+            Span::styled(ctx_checkbox, Style::default().fg(ctx_check_color)),
+            Span::raw(" "),
+            Span::styled("Repository Context (map.md)", ctx_name_style),
+        ]));
+        lines.push(Line::from(vec![
+            Span::raw("    "),
+            Span::styled(
+                "Inject repository context into agent system prompt",
+                Style::default().fg(Color::DarkGray),
+            ),
+        ]));
+        lines.push(Line::styled(
+            format!("  {}", "─".repeat(width.saturating_sub(4) as usize)),
+            Style::default().fg(Color::DarkGray),
+        ));
+
         lines.push(Line::from(""));
 
         // --- Skills section ---
@@ -164,9 +206,9 @@ impl PromptsPage {
                 Style::default().fg(Color::DarkGray),
             ));
         } else {
-            let prompt_count = self.system_prompts.len();
+            let ss = self.skills_start();
             for (i, s) in self.skills.iter().enumerate() {
-                let is_selected = self.selected == prompt_count + i;
+                let is_selected = self.selected == ss + i;
                 lines.extend(render_skill_owned(s, is_selected, width));
             }
         }
@@ -189,6 +231,7 @@ impl PromptsPage {
             offset += 1; // placeholder
         }
 
+        // Selected is a system prompt entry
         if self.selected < self.system_prompts.len() {
             for i in 0..self.selected {
                 offset += render_system_prompt_owned(&self.system_prompts[i], false, width).len();
@@ -196,17 +239,24 @@ impl PromptsPage {
             return offset;
         }
 
-        // Past system prompts section
+        // Past system prompt entries
         for p in &self.system_prompts {
             offset += render_system_prompt_owned(p, false, width).len();
         }
-        offset += 3; // blank line + "Skills" header + separator
+
+        // Selected is context toggle (still in system prompts section)
+        if self.selected == self.context_toggle_idx() {
+            return offset;
+        }
+
+        offset += 3; // context toggle (3 lines: checkbox + description + separator)
+        offset += 3; // blank + skills header + separator
 
         if self.skills.is_empty() {
             offset += 1;
         }
 
-        let skill_idx = self.selected - self.system_prompts.len();
+        let skill_idx = self.selected - self.skills_start();
         for i in 0..skill_idx {
             offset += render_skill_owned(&self.skills[i], false, width).len();
         }
@@ -275,13 +325,21 @@ impl Widget for PromptsPage {
             }
         }
 
+        // Context toggle = 3 lines (checkbox + description + separator)
+        if visible_row < line_idx + 3 {
+            self.selected = self.context_toggle_idx();
+            return Some(WidgetAction::ToggleContextInjection);
+        }
+        line_idx += 3;
+
         line_idx += 3; // blank + skills header + separator
 
+        let ss = self.skills_start();
         if !self.skills.is_empty() {
             for (i, s) in self.skills.iter().enumerate() {
                 let h = render_skill_owned(s, false, width).len();
                 if visible_row < line_idx + h {
-                    self.selected = self.system_prompts.len() + i;
+                    self.selected = ss + i;
                     return Some(WidgetAction::ToggleSkill(s.name.clone()));
                 }
                 line_idx += h;
@@ -493,6 +551,10 @@ mod tests {
         page.handle_key(make_key(KeyCode::Down));
         assert_eq!(page.selected_item(), Some((Section::SystemPrompts, 1)));
 
+        // Down to context toggle (still System Prompts section)
+        page.handle_key(make_key(KeyCode::Down));
+        assert_eq!(page.selected, page.context_toggle_idx());
+
         // Down into skills
         page.handle_key(make_key(KeyCode::Down));
         assert_eq!(page.selected_item(), Some((Section::Skills, 0)));
@@ -504,7 +566,8 @@ mod tests {
         page.handle_key(make_key(KeyCode::Down));
         assert_eq!(page.selected_item(), Some((Section::Skills, 1)));
 
-        // Back up into system prompts
+        // Back up through context into system prompts
+        page.handle_key(make_key(KeyCode::Up));
         page.handle_key(make_key(KeyCode::Up));
         page.handle_key(make_key(KeyCode::Up));
         assert_eq!(page.selected_item(), Some((Section::SystemPrompts, 1)));
@@ -523,12 +586,26 @@ mod tests {
     }
 
     #[test]
+    fn toggle_context_injection() {
+        let mut page = PromptsPage::new();
+        page.set_system_prompts(sample_prompts());
+
+        // Navigate past 2 system prompts to context toggle
+        page.handle_key(make_key(KeyCode::Down));
+        page.handle_key(make_key(KeyCode::Down));
+        assert_eq!(page.selected, page.context_toggle_idx());
+        let action = page.handle_key(make_key(KeyCode::Enter));
+        assert!(matches!(action, Some(WidgetAction::ToggleContextInjection)));
+    }
+
+    #[test]
     fn toggle_skill_from_skills_section() {
         let mut page = PromptsPage::new();
         page.set_system_prompts(sample_prompts());
         page.set_skills(sample_skills());
 
-        // Navigate past system prompts into skills
+        // Navigate past system prompts + context toggle into skills
+        page.handle_key(make_key(KeyCode::Down));
         page.handle_key(make_key(KeyCode::Down));
         page.handle_key(make_key(KeyCode::Down));
         let action = page.handle_key(make_key(KeyCode::Enter));
@@ -542,9 +619,9 @@ mod tests {
         let mut page = PromptsPage::new();
         page.set_system_prompts(sample_prompts());
         page.set_skills(sample_skills());
-        page.selected = 3; // last skill
+        page.selected = 4; // last skill (2 prompts + 1 context + 2 skills - 1)
         page.set_skills(Vec::new()); // remove all skills
-        assert_eq!(page.selected, 1); // clamped to last system prompt
+        assert_eq!(page.selected, 2); // clamped to context toggle
     }
 
     #[test]
@@ -574,6 +651,9 @@ mod tests {
     fn skills_only_no_prompts() {
         let mut page = PromptsPage::new();
         page.set_skills(sample_skills());
+        // selected=0 is context toggle (no prompts), down once to reach skills
+        assert_eq!(page.selected, page.context_toggle_idx());
+        page.handle_key(make_key(KeyCode::Down));
         assert_eq!(page.selected_item(), Some((Section::Skills, 0)));
     }
 

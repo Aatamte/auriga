@@ -1,0 +1,59 @@
+{
+  "mcp_port": 7850,
+  "disabled_classifiers": [
+    "agent-health"
+  ],
+  "layout": {
+    "columns": 12,
+    "rows": [
+      {
+        "height": "20%",
+        "cells": [
+          {
+            "widget": "agent-list",
+            "span": 2,
+            "rowspan": 1
+          },
+          {
+            "widget": "agent-pane",
+            "span": 10,
+            "rowspan": 4
+          }
+        ]
+      },
+      {
+        "height": "15%",
+        "cells": [
+          {
+            "widget": "classifier-panel",
+            "span": 2,
+            "rowspan": 1
+          }
+        ]
+      },
+      {
+        "height": "25%",
+        "cells": [
+          {
+            "widget": "recent-activity",
+            "span": 2,
+            "rowspan": 1
+          }
+        ]
+      },
+      {
+        "height": "40%",
+        "cells": [
+          {
+            "widget": "file-tree",
+            "span": 2,
+            "rowspan": 1
+          }
+        ]
+      }
+    ]
+  },
+  "default_provider": "claude",
+  "claude_enabled": true,
+  "display_mode": "provider"
+}

@@ -1,0 +1,31 @@
+{
+  "name": "agent-health",
+  "description": "Classifies agent sessions by health: clean runs vs sessions with error loops, excessive token waste, or signs of struggle.",
+  "version": "0.1.0",
+  "enabled": true,
+  "trigger": "on_complete",
+  "type": "ml",
+  "runtime": {
+    "model": "agent-health-v1"
+  },
+  "labels": [
+    {
+      "label": "healthy",
+      "notification": {
+        "message": "Agent session completed cleanly."
+      }
+    },
+    {
+      "label": "struggling",
+      "notification": {
+        "message": "Agent hit repeated errors or wasted tokens on retries."
+      }
+    },
+    {
+      "label": "wasteful",
+      "notification": {
+        "message": "Agent used excessive tokens relative to output."
+      }
+    }
+  ]
+}

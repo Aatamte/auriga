@@ -20,6 +20,12 @@ pub struct Config {
     pub claude_enabled: bool,
     #[serde(default = "default_display_mode")]
     pub display_mode: String,
+    #[serde(default = "default_font_size")]
+    pub font_size: u16,
+}
+
+fn default_font_size() -> u16 {
+    10
 }
 
 fn default_provider() -> String {
@@ -58,6 +64,7 @@ impl Default for Config {
             default_provider: default_provider(),
             claude_enabled: true,
             display_mode: default_display_mode(),
+            font_size: default_font_size(),
         }
     }
 }
@@ -138,21 +145,15 @@ mod tests {
 
     #[test]
     fn config_round_trips_through_json() {
-        let config = Config {
-            mcp_port: 9000,
-            disabled_classifiers: vec![],
-            layout: Grid::default(),
-            default_provider: "claude".into(),
-            claude_enabled: true,
-            display_mode: "provider".into(),
-        };
+        let config = Config::default();
         let json = serde_json::to_string(&config).unwrap();
         let parsed: Config = serde_json::from_str(&json).unwrap();
-        assert_eq!(parsed.mcp_port, 9000);
-        assert_eq!(parsed.layout.columns, 12);
-        assert_eq!(parsed.default_provider, "claude");
-        assert!(parsed.claude_enabled);
-        assert_eq!(parsed.display_mode, "provider");
+        assert_eq!(parsed.mcp_port, config.mcp_port);
+        assert_eq!(parsed.layout.columns, config.layout.columns);
+        assert_eq!(parsed.default_provider, config.default_provider);
+        assert_eq!(parsed.claude_enabled, config.claude_enabled);
+        assert_eq!(parsed.display_mode, config.display_mode);
+        assert_eq!(parsed.font_size, config.font_size);
     }
 
     #[test]

@@ -1,0 +1,17 @@
+{
+  "mcpServers": {
+    "doctor": {
+      "autoApprove": [
+        "list_traces",
+        "get_trace",
+        "list_classifiers",
+        "create_classifier",
+        "label_trace",
+        "list_training_labels",
+        "train_classifier"
+      ],
+      "type": "http",
+      "url": "http://127.0.0.1:57684"
+    }
+  }
+}

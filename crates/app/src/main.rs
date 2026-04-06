@@ -62,6 +62,9 @@ fn main() -> Result<()> {
     out.execute(EnterAlternateScreen)?;
     out.execute(EnableMouseCapture)?;
 
+    // Apply font size
+    apply_font_size(&mut out, config.font_size);
+
     // Background threads
     let input_rx = threads::start_input_thread();
     let (file_tx, file_rx) = mpsc::channel();
@@ -278,4 +281,12 @@ fn main() -> Result<()> {
     out.execute(LeaveAlternateScreen)?;
     disable_raw_mode()?;
     Ok(())
+}
+
+fn apply_font_size(out: &mut impl std::io::Write, size: u16) {
+    // xterm OSC 50 — widely supported (xterm, kitty, alacritty, WezTerm)
+    let _ = out.write_all(format!("\x1b]50;size={}\x07", size).as_bytes());
+    // iTerm2 proprietary sequence
+    let _ = out.write_all(format!("\x1b]1337;SetFontSize={}\x07", size).as_bytes());
+    let _ = out.flush();
 }

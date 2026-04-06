@@ -70,6 +70,7 @@ pub struct App {
     pub generate_tx: mpsc::Sender<(AgentId, GenerateRequest)>,
     pub generate_rx: mpsc::Receiver<(AgentId, Result<GenerateResponse, String>)>,
     pub running: bool,
+    pub context_injection: bool,
 }
 
 impl App {
@@ -134,6 +135,7 @@ impl App {
             generate_tx,
             generate_rx,
             running: true,
+            context_injection: true,
         }
     }
 
@@ -208,17 +210,26 @@ impl App {
         (cols, rows)
     }
 
-    /// Build the default AgentConfig, injecting system prompt + repository context.
+    /// Build the default AgentConfig, composing system prompt + repository context.
     pub fn default_agent_config(&self) -> AgentConfig {
+        use orchestrator_agent::SystemPromptBuilder;
+
         let prompts = load_system_prompts();
         let prompt_content = prompts
             .iter()
             .find(|p| p.enabled && p.provider == "claude")
-            .map(|p| p.content.clone());
+            .map(|p| p.content.as_str())
+            .unwrap_or("");
 
-        // Combine: system prompt + Layer 0 map context
-        let map_content = crate::context::load_map_content();
-        let system_prompt = build_system_prompt(prompt_content.as_deref(), &map_content);
+        let mut builder = SystemPromptBuilder::new()
+            .section(prompt_content);
+
+        if self.context_injection {
+            let map_content = crate::context::load_map_content();
+            builder = builder.titled_section("Repository Context", &map_content);
+        }
+
+        let system_prompt = builder.build();
 
         AgentConfig {
             name: "agent".into(),
@@ -825,6 +836,10 @@ impl App {
                 self.toggle_system_prompt(&name);
                 self.refresh_prompts();
             }
+            WidgetAction::ToggleContextInjection => {
+                self.context_injection = !self.context_injection;
+                self.widgets.prompts_page.context_enabled = self.context_injection;
+            }
             WidgetAction::ToggleClassifier(name) => {
                 let currently_enabled = self.classifier_registry.is_enabled(&name);
                 self.classifier_registry
@@ -1069,6 +1084,8 @@ impl App {
 
         let prompts = load_system_prompts();
         self.widgets.prompts_page.set_system_prompts(prompts);
+
+        self.widgets.prompts_page.context_enabled = self.context_injection;
     }
 
     fn toggle_system_prompt(&self, name: &str) {
@@ -1143,24 +1160,6 @@ fn load_system_prompts() -> Vec<orchestrator_widgets::SystemPromptEntry> {
     prompts
 }
 
-/// Combine a system prompt and repository context map into a single system prompt string.
-/// Returns None if both are empty.
-fn build_system_prompt(prompt: Option<&str>, map_content: &str) -> Option<String> {
-    let has_prompt = prompt.is_some_and(|p| !p.is_empty());
-    let has_map = !map_content.is_empty();
-
-    match (has_prompt, has_map) {
-        (true, true) => Some(format!(
-            "{}\n\n---\n\n# Repository Context\n\n{}",
-            prompt.unwrap(),
-            map_content
-        )),
-        (true, false) => Some(prompt.unwrap().to_string()),
-        (false, true) => Some(format!("# Repository Context\n\n{}", map_content)),
-        (false, false) => None,
-    }
-}
-
 fn resolve_provider(name: &str) -> Box<dyn Provider> {
     match name {
         "claude" => Box::new(ClaudeProvider),
@@ -1198,6 +1197,13 @@ fn config_to_fields(config: &crate::config::Config) -> Vec<SettingsField> {
             description: "native = our TUI, provider = provider's own TUI",
             kind: FieldKind::Toggle(vec!["native".into(), "provider".into()]),
         },
+        SettingsField {
+            label: "Font Size",
+            key: "font_size",
+            value: config.font_size.to_string(),
+            description: "Global font size (8-32)",
+            kind: FieldKind::Text,
+        },
     ]
 }
 
@@ -1218,6 +1224,11 @@ fn fields_to_config(values: &[(&str, &str)]) -> crate::config::Config {
             }
             "display_mode" => {
                 config.display_mode = val.to_string();
+            }
+            "font_size" => {
+                if let Ok(size) = val.parse::<u16>() {
+                    config.font_size = size.clamp(8, 32);
+                }
             }
             _ => {}
         }
