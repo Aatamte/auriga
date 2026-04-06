@@ -12,8 +12,41 @@ pub struct Config {
     pub mcp_port: u16,
     #[serde(default)]
     pub disabled_classifiers: Vec<String>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_layout")]
     pub layout: Grid,
+    #[serde(default = "default_provider")]
+    pub default_provider: String,
+    #[serde(default = "default_true")]
+    pub claude_enabled: bool,
+    #[serde(default = "default_display_mode")]
+    pub display_mode: String,
+}
+
+fn default_provider() -> String {
+    "claude".into()
+}
+
+fn default_true() -> bool {
+    true
+}
+
+fn default_display_mode() -> String {
+    "provider".into()
+}
+
+/// Deserialize layout, falling back to default if the JSON is invalid (e.g. stale widget ids).
+fn deserialize_layout<'de, D>(deserializer: D) -> Result<Grid, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let value = Option::<serde_json::Value>::deserialize(deserializer)?;
+    match value {
+        Some(v) => match serde_json::from_value(v) {
+            Ok(grid) => Ok(grid),
+            Err(_) => Ok(Grid::default()),
+        },
+        None => Ok(Grid::default()),
+    }
 }
 
 impl Default for Config {
@@ -22,6 +55,9 @@ impl Default for Config {
             mcp_port: 7850,
             disabled_classifiers: Vec::new(),
             layout: Grid::default(),
+            default_provider: default_provider(),
+            claude_enabled: true,
+            display_mode: default_display_mode(),
         }
     }
 }
@@ -38,7 +74,35 @@ pub fn init() -> Result<Config> {
 
     let config = load_or_create_config(&dir)?;
 
+    // Ensure default prompts exist
+    let prompts_dir = dir.join("prompts");
+    fs::create_dir_all(&prompts_dir)?;
+    create_default_prompt(&prompts_dir, "coding-assistant", include_str!("defaults/coding-assistant.json"))?;
+
+    // Ensure context directory exists with default files
+    let context_dir = dir.join("context");
+    fs::create_dir_all(&context_dir)?;
+    create_default_file(&context_dir, "map.md", include_str!("defaults/map.md"))?;
+    create_default_file(&context_dir, "principles.md", include_str!("defaults/principles.md"))?;
+    create_default_file(&context_dir, "examples.md", include_str!("defaults/examples.md"))?;
+
     Ok(config)
+}
+
+fn create_default_prompt(dir: &Path, name: &str, content: &str) -> Result<()> {
+    let path = dir.join(format!("{}.json", name));
+    if !path.exists() {
+        fs::write(path, content)?;
+    }
+    Ok(())
+}
+
+fn create_default_file(dir: &Path, name: &str, content: &str) -> Result<()> {
+    let path = dir.join(name);
+    if !path.exists() {
+        fs::write(path, content)?;
+    }
+    Ok(())
 }
 
 /// Save config to disk.
@@ -78,11 +142,17 @@ mod tests {
             mcp_port: 9000,
             disabled_classifiers: vec![],
             layout: Grid::default(),
+            default_provider: "claude".into(),
+            claude_enabled: true,
+            display_mode: "provider".into(),
         };
         let json = serde_json::to_string(&config).unwrap();
         let parsed: Config = serde_json::from_str(&json).unwrap();
         assert_eq!(parsed.mcp_port, 9000);
         assert_eq!(parsed.layout.columns, 12);
+        assert_eq!(parsed.default_provider, "claude");
+        assert!(parsed.claude_enabled);
+        assert_eq!(parsed.display_mode, "provider");
     }
 
     #[test]

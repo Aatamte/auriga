@@ -2,18 +2,19 @@ mod agent_list;
 pub mod agent_pane;
 mod classifier_panel;
 mod classifiers_page;
+mod context_page;
 mod database_page;
 mod doctor_page;
 mod file_tree_widget;
 pub mod nav_bar;
 mod recent_activity;
 mod settings_page;
-mod status_bar;
-mod token_chart;
+pub mod prompts_page;
 
 pub use agent_list::AgentListWidget;
 pub use agent_pane::AgentPaneWidget;
 pub use classifier_panel::ClassifierPanelWidget;
+pub use context_page::{AnnotationView, ContextMapView, ContextPage, DeepContextView};
 pub use classifiers_page::{
     ClassifierDetailView, ClassifierStatusView, ClassifiersPage, LabelView,
 };
@@ -26,9 +27,8 @@ pub use file_tree_widget::FileTreeWidget;
 pub use nav_bar::NavBarWidget;
 pub use orchestrator_grid::WidgetId;
 pub use recent_activity::RecentActivityWidget;
-pub use settings_page::{SettingsField, SettingsPage};
-pub use status_bar::StatusBarWidget;
-pub use token_chart::TokenChartWidget;
+pub use settings_page::{FieldKind, SettingsField, SettingsPage};
+pub use prompts_page::{PromptsPage, SystemPromptEntry};
 
 use orchestrator_core::{
     AgentId, AgentStore, FileTree, FocusState, Page, ScrollDirection, TraceStore, TurnStore,
@@ -78,21 +78,23 @@ pub enum WidgetAction {
         offset: u64,
     },
     ToggleClassifier(String),
+    ToggleSkill(String),
+    ToggleSystemPrompt(String),
     StartDoctor,
 }
 
 pub struct WidgetRegistry {
     pub agent_list: AgentListWidget,
     pub agent_pane: AgentPaneWidget,
-    pub token_chart: TokenChartWidget,
     pub recent_activity: RecentActivityWidget,
     pub file_tree: FileTreeWidget,
-    pub status_bar: StatusBarWidget,
     pub nav_bar: NavBarWidget,
     pub settings_page: SettingsPage,
     pub database_page: DatabasePage,
     pub classifiers_page: ClassifiersPage,
     pub classifier_panel: ClassifierPanelWidget,
+    pub prompts_page: PromptsPage,
+    pub context_page: ContextPage,
     pub doctor_page: DoctorPage,
 }
 
@@ -101,15 +103,15 @@ impl WidgetRegistry {
         Self {
             agent_list: AgentListWidget::new(),
             agent_pane: AgentPaneWidget::new(),
-            token_chart: TokenChartWidget::new(),
             recent_activity: RecentActivityWidget::new(),
             file_tree: FileTreeWidget::new(),
-            status_bar: StatusBarWidget::new(),
             nav_bar: NavBarWidget::new(),
             settings_page: SettingsPage::new(),
             database_page: DatabasePage::new(),
             classifiers_page: ClassifiersPage::new(),
             classifier_panel: ClassifierPanelWidget::new(),
+            prompts_page: PromptsPage::new(),
+            context_page: ContextPage::new(),
             doctor_page: DoctorPage::new(),
         }
     }
@@ -118,14 +120,14 @@ impl WidgetRegistry {
         match id {
             WidgetId::AgentList => &mut self.agent_list,
             WidgetId::AgentPane => &mut self.agent_pane,
-            WidgetId::TokenChart => &mut self.token_chart,
             WidgetId::RecentActivity => &mut self.recent_activity,
             WidgetId::FileTree => &mut self.file_tree,
-            WidgetId::StatusBar => &mut self.status_bar,
             WidgetId::SettingsPage => &mut self.settings_page,
             WidgetId::DatabasePage => &mut self.database_page,
             WidgetId::ClassifiersPage => &mut self.classifiers_page,
             WidgetId::ClassifierPanel => &mut self.classifier_panel,
+            WidgetId::PromptsPage => &mut self.prompts_page,
+            WidgetId::ContextPage => &mut self.context_page,
         }
     }
 }
@@ -230,6 +232,5 @@ mod tests {
         let mut registry = registry;
         let _ = registry.get_mut(WidgetId::AgentList);
         let _ = registry.get_mut(WidgetId::AgentPane);
-        let _ = registry.get_mut(WidgetId::TokenChart);
     }
 }

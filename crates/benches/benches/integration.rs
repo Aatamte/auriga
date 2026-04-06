@@ -154,9 +154,11 @@ fn bench_widget_click_dispatch(c: &mut Criterion) {
         b.iter(|| {
             let render_term_fn = |_id: AgentId, _buf: &mut ratatui::buffer::Buffer, _area: Rect| {};
             let turns = orchestrator_core::TurnStore::new();
+            let traces = orchestrator_core::TraceStore::new();
             let ctx = RenderContext {
                 agents: &agents,
                 turns: &turns,
+                traces: &traces,
                 focus: &focus,
                 file_tree: &file_tree,
                 render_term: &render_term_fn,
@@ -298,18 +300,19 @@ fn bench_full_event_to_render_cycle(c: &mut Criterion) {
                     let render_term_fn =
                         |_id: AgentId, _buf: &mut ratatui::buffer::Buffer, _area: Rect| {};
                     let turns = orchestrator_core::TurnStore::new();
+                    let traces = orchestrator_core::TraceStore::new();
                     let ctx = RenderContext {
                         agents: &agents,
                         turns: &turns,
+                        traces: &traces,
                         focus: focus_copy,
                         file_tree: &file_tree,
                         render_term: &render_term_fn,
                     };
 
                     for cell_rect in &cell_rects {
-                        if let Some(widget) = widgets.get_mut(&cell_rect.widget) {
-                            widget.render(frame, cell_rect.rect, &ctx);
-                        }
+                        let widget = widgets.get_mut(cell_rect.widget);
+                        widget.render(frame, cell_rect.rect, &ctx);
                     }
                 })
                 .unwrap();
@@ -337,18 +340,19 @@ fn bench_worst_case_render(c: &mut Criterion) {
                     let render_term_fn =
                         |_id: AgentId, _buf: &mut ratatui::buffer::Buffer, _area: Rect| {};
                     let turns = orchestrator_core::TurnStore::new();
+                    let traces = orchestrator_core::TraceStore::new();
                     let ctx = RenderContext {
                         agents: &agents,
                         turns: &turns,
+                        traces: &traces,
                         focus: &focus,
                         file_tree: &file_tree,
                         render_term: &render_term_fn,
                     };
 
                     for cell_rect in &cell_rects {
-                        if let Some(widget) = widgets.get_mut(&cell_rect.widget) {
-                            widget.render(frame, cell_rect.rect, &ctx);
-                        }
+                        let widget = widgets.get_mut(cell_rect.widget);
+                        widget.render(frame, cell_rect.rect, &ctx);
                     }
                 })
                 .unwrap();

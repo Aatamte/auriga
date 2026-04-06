@@ -104,3 +104,107 @@ impl PtyHandle {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::{Duration, Instant};
+
+    /// Helper: read all available output from a PtyHandle, retrying for up to `timeout`.
+    /// Returns the concatenated bytes once at least one byte has been received and
+    /// no new data arrives for a short settling period, or when the timeout expires.
+    fn read_all(handle: &PtyHandle, timeout: Duration) -> Vec<u8> {
+        let start = Instant::now();
+        let mut collected = Vec::new();
+        let settle = Duration::from_millis(100);
+        let mut last_read = Instant::now();
+
+        loop {
+            if let Some(chunk) = handle.try_read() {
+                collected.extend_from_slice(&chunk);
+                last_read = Instant::now();
+            } else if !collected.is_empty() && last_read.elapsed() >= settle {
+                // We got data and nothing new for a while -- done.
+                break;
+            }
+
+            if start.elapsed() >= timeout {
+                break;
+            }
+            thread::sleep(Duration::from_millis(10));
+        }
+        collected
+    }
+
+    fn tmp_dir() -> std::path::PathBuf {
+        std::env::temp_dir()
+    }
+
+    #[test]
+    fn spawn_echo_returns_valid_pid() {
+        let handle = PtyHandle::spawn_with_args("echo", &["hello"], &tmp_dir(), 80, 24, &[])
+            .expect("spawn echo should succeed");
+
+        // child_pid should be a real pid (Some with a nonzero value)
+        let pid = handle.child_pid();
+        assert!(pid.is_some(), "child_pid should be Some");
+        assert!(pid.unwrap() > 0, "pid should be positive");
+
+        // We should also be able to read the echoed output.
+        let output = read_all(&handle, Duration::from_secs(3));
+        let text = String::from_utf8_lossy(&output);
+        assert!(
+            text.contains("hello"),
+            "expected 'hello' in output, got: {text:?}"
+        );
+    }
+
+    #[test]
+    fn write_input_and_read_output_via_cat() {
+        let mut handle =
+            PtyHandle::spawn("cat", &tmp_dir(), 80, 24, &[]).expect("spawn cat should succeed");
+
+        // Give cat a moment to start.
+        thread::sleep(Duration::from_millis(200));
+
+        let payload = b"pty_test_data\n";
+        handle
+            .write_input(payload)
+            .expect("write_input should succeed");
+
+        let output = read_all(&handle, Duration::from_secs(3));
+        let text = String::from_utf8_lossy(&output);
+        assert!(
+            text.contains("pty_test_data"),
+            "expected 'pty_test_data' in output, got: {text:?}"
+        );
+    }
+
+    #[test]
+    fn spawn_invalid_command_returns_err() {
+        let result = PtyHandle::spawn("this_command_does_not_exist_9999", &tmp_dir(), 80, 24, &[]);
+        assert!(
+            result.is_err(),
+            "spawning a nonexistent command should return Err"
+        );
+    }
+
+    #[test]
+    fn try_read_on_fresh_handle_returns_none_initially() {
+        // Spawn a command that produces no immediate output and doesn't exit
+        // quickly. `sleep` is ideal: it just waits.
+        let handle = PtyHandle::spawn_with_args("sleep", &["10"], &tmp_dir(), 80, 24, &[])
+            .expect("spawn sleep should succeed");
+
+        // Immediately try to read -- there should be nothing yet.
+        // Give the reader thread a tiny moment to start, but sleep itself
+        // should not produce output.
+        thread::sleep(Duration::from_millis(50));
+        let data = handle.try_read();
+        assert!(
+            data.is_none() || data.as_ref().map_or(false, |d| d.is_empty()),
+            "expected no output from sleep, got: {:?}",
+            data
+        );
+    }
+}

@@ -13,6 +13,7 @@ members = [
     "crates/classifier",
     "crates/ml",
     "crates/skills",
+    "crates/agent",
     "crates/cli",
     "crates/app",
     "crates/benches",

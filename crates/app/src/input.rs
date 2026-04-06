@@ -15,7 +15,8 @@ pub fn handle_key(app: &mut App, key: KeyEvent) {
                 return;
             }
             KeyCode::Char('n') => {
-                if let Err(e) = app.spawn_agent("claude") {
+                let config = app.default_agent_config();
+                if let Err(e) = app.spawn_agent(&config) {
                     tracing::error!(error = %e, "failed to spawn agent");
                 }
                 return;
@@ -41,7 +42,21 @@ pub fn handle_key(app: &mut App, key: KeyEvent) {
                 app.handle_widget_action(action);
             }
         }
-        Page::Home => forward_key(app, key),
+        Page::Home => {
+            // Check if active agent is in native mode
+            let is_native = app
+                .focus
+                .active_agent
+                .and_then(|id| app.agents.get(id))
+                .map(|a| a.display_mode == orchestrator_core::DisplayMode::Native)
+                .unwrap_or(false);
+
+            if is_native {
+                handle_native_input(app, key);
+            } else {
+                forward_key(app, key);
+            }
+        }
         Page::Database => {
             if let Some(action) = app.widgets.database_page.handle_key(key) {
                 app.handle_widget_action(action);
@@ -51,6 +66,14 @@ pub fn handle_key(app: &mut App, key: KeyEvent) {
             if let Some(action) = app.widgets.classifiers_page.handle_key(key) {
                 app.handle_widget_action(action);
             }
+        }
+        Page::Prompts => {
+            if let Some(action) = app.widgets.prompts_page.handle_key(key) {
+                app.handle_widget_action(action);
+            }
+        }
+        Page::Context => {
+            // Placeholder — no key handling yet
         }
         Page::Doctor => {
             if app.widgets.doctor_page.agent_id.is_some() {
@@ -137,6 +160,27 @@ pub fn handle_mouse(app: &mut App, mouse: MouseEvent) {
                     .get_mut(widget_name)
                     .handle_scroll(ScrollDirection::Down);
             }
+        }
+        _ => {}
+    }
+}
+
+fn handle_native_input(app: &mut App, key: KeyEvent) {
+    if app.widgets.agent_pane.generating {
+        return; // Ignore input while generating
+    }
+    match key.code {
+        KeyCode::Enter => {
+            app.send_native_message();
+        }
+        KeyCode::Char(c) => {
+            app.widgets.agent_pane.input_buffer.push(c);
+        }
+        KeyCode::Backspace => {
+            app.widgets.agent_pane.input_buffer.pop();
+        }
+        KeyCode::Esc => {
+            app.widgets.agent_pane.input_buffer.clear();
         }
         _ => {}
     }

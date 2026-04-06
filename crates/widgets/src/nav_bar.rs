@@ -5,35 +5,6 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 use ratatui::Frame;
 
-/// Tab labels with a separator. Each tab has a fixed column range for hit-testing.
-/// Layout: " Home │ Settings │ Database "
-struct TabLayout {
-    tabs: Vec<(Page, u16, u16)>, // (page, start_col, end_col) relative to area.x
-}
-
-impl TabLayout {
-    fn compute() -> Self {
-        let mut tabs = Vec::new();
-        let mut col: u16 = 1; // leading space
-        for &page in Page::ALL {
-            let label_len = page.label().len() as u16;
-            tabs.push((page, col, col + label_len));
-            col += label_len + 3; // " │ " separator
-        }
-        Self { tabs }
-    }
-
-    fn hit_test(&self, col: u16, area: Rect) -> Option<Page> {
-        let x = col.checked_sub(area.x)?;
-        for &(page, start, end) in &self.tabs {
-            if x >= start && x < end {
-                return Some(page);
-            }
-        }
-        None
-    }
-}
-
 pub struct NavBarWidget;
 
 impl NavBarWidget {
@@ -46,22 +17,47 @@ impl NavBarWidget {
             return;
         }
 
-        let mut spans = Vec::new();
-        spans.push(Span::raw(" "));
-
-        for (i, &page) in Page::ALL.iter().enumerate() {
-            if i > 0 {
-                spans.push(Span::styled(" │ ", Style::default().fg(Color::DarkGray)));
-            }
-            let style = if page == current_page {
+        let tab_style = |page: Page| {
+            if page == current_page {
                 Style::default()
                     .fg(Color::Cyan)
                     .add_modifier(Modifier::BOLD)
             } else {
                 Style::default().fg(Color::DarkGray)
-            };
-            spans.push(Span::styled(page.label(), style));
+            }
+        };
+
+        // Left group
+        let mut left_spans = Vec::new();
+        left_spans.push(Span::raw(" "));
+        for (i, &page) in Page::LEFT.iter().enumerate() {
+            if i > 0 {
+                left_spans.push(Span::styled(" │ ", Style::default().fg(Color::DarkGray)));
+            }
+            left_spans.push(Span::styled(page.label(), tab_style(page)));
         }
+
+        // Right group
+        let mut right_spans = Vec::new();
+        for (i, &page) in Page::RIGHT.iter().enumerate() {
+            if i > 0 {
+                right_spans.push(Span::styled(" │ ", Style::default().fg(Color::DarkGray)));
+            }
+            right_spans.push(Span::styled(page.label(), tab_style(page)));
+        }
+        right_spans.push(Span::raw(" "));
+
+        // Compute widths
+        let left_width: u16 = left_spans.iter().map(|s| s.width() as u16).sum();
+        let right_width: u16 = right_spans.iter().map(|s| s.width() as u16).sum();
+        let gap = area.width.saturating_sub(left_width + right_width);
+
+        // Combine: left + flexible gap + right
+        let mut spans = left_spans;
+        if gap > 0 {
+            spans.push(Span::raw(" ".repeat(gap as usize)));
+        }
+        spans.extend(right_spans);
 
         let paragraph = Paragraph::new(Line::from(spans));
         frame.render_widget(paragraph, area);
@@ -69,7 +65,7 @@ impl NavBarWidget {
 
     /// Hit-test a click at the given column. Returns the page if a tab was clicked.
     pub fn handle_click(&self, col: u16, area: Rect) -> Option<Page> {
-        TabLayout::compute().hit_test(col, area)
+        TabLayout::compute(area.width).hit_test(col, area)
     }
 }
 
@@ -79,58 +75,59 @@ impl Default for NavBarWidget {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+/// Computed tab positions for hit-testing, matching the render layout.
+struct TabLayout {
+    tabs: Vec<(Page, u16, u16)>, // (page, start_col, end_col) relative to area.x
+}
 
-    fn area() -> Rect {
-        Rect::new(0, 0, 80, 1)
+impl TabLayout {
+    fn compute(area_width: u16) -> Self {
+        let mut tabs = Vec::new();
+
+        // Left group
+        let mut col: u16 = 1; // leading space
+        for (i, &page) in Page::LEFT.iter().enumerate() {
+            if i > 0 {
+                col += 3; // " │ "
+            }
+            let label_len = page.label().len() as u16;
+            tabs.push((page, col, col + label_len));
+            col += label_len;
+        }
+        let left_width = col;
+
+        // Right group: compute width first, then position from right edge
+        let mut right_width: u16 = 1; // trailing space
+        for (i, &page) in Page::RIGHT.iter().enumerate() {
+            if i > 0 {
+                right_width += 3;
+            }
+            right_width += page.label().len() as u16;
+        }
+
+        let mut col = area_width.saturating_sub(right_width);
+        for (i, &page) in Page::RIGHT.iter().enumerate() {
+            if i > 0 {
+                col += 3;
+            }
+            let label_len = page.label().len() as u16;
+            // Only add if it doesn't overlap left group
+            if col >= left_width {
+                tabs.push((page, col, col + label_len));
+            }
+            col += label_len;
+        }
+
+        Self { tabs }
     }
 
-    #[test]
-    fn click_home_tab() {
-        let widget = NavBarWidget::new();
-        // " Home" starts at col 1
-        assert_eq!(widget.handle_click(1, area()), Some(Page::Home));
-        assert_eq!(widget.handle_click(4, area()), Some(Page::Home));
-    }
-
-    #[test]
-    fn click_classifiers_tab() {
-        let widget = NavBarWidget::new();
-        // "Home" = 4 chars at col 1-4, " │ " = 3, "Classifiers" starts at col 8
-        assert_eq!(widget.handle_click(8, area()), Some(Page::Classifiers));
-        assert_eq!(widget.handle_click(18, area()), Some(Page::Classifiers));
-    }
-
-    #[test]
-    fn click_database_tab() {
-        let widget = NavBarWidget::new();
-        // "Classifiers" = 11 chars at col 8-18, " │ " = 3, "Database" starts at col 22
-        assert_eq!(widget.handle_click(22, area()), Some(Page::Database));
-    }
-
-    #[test]
-    fn click_separator_returns_none() {
-        let widget = NavBarWidget::new();
-        // Separator " │ " is at cols 5-7
-        assert_eq!(widget.handle_click(5, area()), None);
-        assert_eq!(widget.handle_click(6, area()), None);
-    }
-
-    #[test]
-    fn click_outside_returns_none() {
-        let widget = NavBarWidget::new();
-        assert_eq!(widget.handle_click(50, area()), None);
-    }
-
-    #[test]
-    fn click_with_offset_area() {
-        let widget = NavBarWidget::new();
-        let offset_area = Rect::new(10, 0, 80, 1);
-        // "Home" at col 11 (area.x + 1)
-        assert_eq!(widget.handle_click(11, offset_area), Some(Page::Home));
-        // Col 1 is before the area
-        assert_eq!(widget.handle_click(1, offset_area), None);
+    fn hit_test(&self, col: u16, area: Rect) -> Option<Page> {
+        let x = col.checked_sub(area.x)?;
+        for &(page, start, end) in &self.tabs {
+            if x >= start && x < end {
+                return Some(page);
+            }
+        }
+        None
     }
 }

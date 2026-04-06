@@ -9,11 +9,19 @@ use ratatui::Frame;
 
 const LABEL_WIDTH: usize = 20;
 
+pub enum FieldKind {
+    /// Free-text editing.
+    Text,
+    /// Cycles through fixed options on Enter.
+    Toggle(Vec<String>),
+}
+
 pub struct SettingsField {
     pub label: &'static str,
     pub key: &'static str,
     pub value: String,
     pub description: &'static str,
+    pub kind: FieldKind,
 }
 
 pub struct SettingsPage {
@@ -118,8 +126,24 @@ impl SettingsPage {
             KeyCode::Enter => {
                 if let Some(idx) = self.selected {
                     if idx < self.fields.len() {
-                        self.editing = true;
-                        self.edit_buffer = self.fields[idx].value.clone();
+                        match &self.fields[idx].kind {
+                            FieldKind::Text => {
+                                self.editing = true;
+                                self.edit_buffer = self.fields[idx].value.clone();
+                            }
+                            FieldKind::Toggle(options) => {
+                                if let Some(pos) =
+                                    options.iter().position(|o| *o == self.fields[idx].value)
+                                {
+                                    let next = (pos + 1) % options.len();
+                                    self.fields[idx].value = options[next].clone();
+                                } else if let Some(first) = options.first() {
+                                    self.fields[idx].value = first.clone();
+                                }
+                                self.dirty = true;
+                                self.save_message = None;
+                            }
+                        }
                     }
                 }
             }
@@ -173,8 +197,11 @@ impl Widget for SettingsPage {
             let padded_label = format!("  {:<width$}", field.label, width = LABEL_WIDTH);
 
             // Value
+            let is_toggle = matches!(field.kind, FieldKind::Toggle(_));
             let value_display = if is_editing {
                 format!("{}▎", self.edit_buffer)
+            } else if is_toggle && is_selected {
+                format!("◀ {} ▶", field.value)
             } else {
                 field.value.clone()
             };
@@ -232,6 +259,29 @@ impl Widget for SettingsPage {
         };
         lines.push(Line::styled(help, Style::default().fg(Color::DarkGray)));
 
+        // Keybindings reference
+        lines.push(Line::from(""));
+        lines.push(Line::styled(
+            "  Keybindings",
+            Style::default()
+                .fg(Color::White)
+                .add_modifier(Modifier::BOLD),
+        ));
+        lines.push(Line::from(""));
+        for (key, desc) in [
+            ("ctrl+n", "new agent"),
+            ("ctrl+b", "toggle view"),
+            ("ctrl+w", "close agent"),
+            ("ctrl+q", "quit"),
+            ("shift+click", "copy"),
+        ] {
+            lines.push(Line::from(vec![
+                Span::raw("  "),
+                Span::styled(format!("{:<14}", key), Style::default().fg(Color::Cyan)),
+                Span::styled(desc, Style::default().fg(Color::DarkGray)),
+            ]));
+        }
+
         let paragraph = Paragraph::new(lines);
         frame.render_widget(paragraph, inner);
     }
@@ -251,9 +301,26 @@ impl Widget for SettingsPage {
         let field_idx = (row as usize - 1) / 3;
         if field_idx < self.fields.len() {
             if self.selected == Some(field_idx) && !self.editing {
-                // Second click starts editing
-                self.editing = true;
-                self.edit_buffer = self.fields[field_idx].value.clone();
+                // Second click: toggle or edit depending on kind
+                match &self.fields[field_idx].kind {
+                    FieldKind::Text => {
+                        self.editing = true;
+                        self.edit_buffer = self.fields[field_idx].value.clone();
+                    }
+                    FieldKind::Toggle(options) => {
+                        if let Some(pos) = options
+                            .iter()
+                            .position(|o| *o == self.fields[field_idx].value)
+                        {
+                            let next = (pos + 1) % options.len();
+                            self.fields[field_idx].value = options[next].clone();
+                        } else if let Some(first) = options.first() {
+                            self.fields[field_idx].value = first.clone();
+                        }
+                        self.dirty = true;
+                        self.save_message = None;
+                    }
+                }
             } else {
                 self.selected = Some(field_idx);
                 self.editing = false;
@@ -284,6 +351,7 @@ mod tests {
             key: "mcp_port",
             value: "7850".to_string(),
             description: "Port for MCP server",
+            kind: FieldKind::Text,
         }]);
         page
     }
@@ -385,5 +453,46 @@ mod tests {
         let page = page_with_field();
         let vals = page.field_values();
         assert_eq!(vals, vec![("mcp_port", "7850")]);
+    }
+
+    fn page_with_toggle() -> SettingsPage {
+        let mut page = SettingsPage::new();
+        page.set_fields(vec![SettingsField {
+            label: "Display Mode",
+            key: "display_mode",
+            value: "native".to_string(),
+            description: "Display mode",
+            kind: FieldKind::Toggle(vec!["native".into(), "orchestrator".into()]),
+        }]);
+        page
+    }
+
+    #[test]
+    fn enter_cycles_toggle_field() {
+        let mut page = page_with_toggle();
+        page.selected = Some(0);
+        page.handle_key(make_key(KeyCode::Enter, KeyModifiers::NONE));
+        assert_eq!(page.fields[0].value, "orchestrator");
+        assert!(!page.editing);
+        assert!(page.dirty);
+    }
+
+    #[test]
+    fn toggle_wraps_around() {
+        let mut page = page_with_toggle();
+        page.selected = Some(0);
+        page.handle_key(make_key(KeyCode::Enter, KeyModifiers::NONE));
+        assert_eq!(page.fields[0].value, "orchestrator");
+        page.handle_key(make_key(KeyCode::Enter, KeyModifiers::NONE));
+        assert_eq!(page.fields[0].value, "native");
+    }
+
+    #[test]
+    fn toggle_does_not_enter_edit_mode() {
+        let mut page = page_with_toggle();
+        page.selected = Some(0);
+        page.handle_key(make_key(KeyCode::Enter, KeyModifiers::NONE));
+        assert!(!page.editing);
+        assert!(page.edit_buffer.is_empty());
     }
 }

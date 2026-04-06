@@ -7,5 +7,7 @@ edition = "2021"
 orchestrator-core = { path = "../core" }
 orchestrator-grid = { path = "../grid" }
 orchestrator-terminal = { path = "../terminal" }
+orchestrator-skills = { path = "../skills" }
 crossterm = { workspace = true }
 ratatui = { workspace = true }
+serde_json = { workspace = true }

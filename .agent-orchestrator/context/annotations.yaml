@@ -1,0 +1,93 @@
+# File-level context annotations.
+# Each key is a file path relative to the repo root.
+# Agents receive these when they open the corresponding file.
+#
+# Fields:
+#   purpose:     One-line description of what this file does.
+#   key_types:   Important types/functions defined here (name: description).
+#   invariants:  Things that must remain true about this file's contents.
+#   hazards:     Non-obvious pitfalls, things that look wrong but are correct.
+#   depends_on:  Modules/files this file relies on.
+#   depended_by: Modules/files that rely on this file.
+#   examples:    "To do X, follow the pattern here."
+
+crates/core/src/agent.rs:
+  purpose: "Core Agent entity, AgentId, AgentStore. Central identity type."
+  key_types:
+    Agent: "A running agent instance. Has id, name, provider, status, display_mode."
+    AgentId: "UUID wrapper. Only created through AgentStore::create."
+    AgentStore: "Owns all agents. create() is the only way to mint an AgentId."
+  invariants:
+    - "AgentId is globally unique — created from Uuid::new_v4"
+    - "agent.name format is always '{provider} #{first 8 hex chars of uuid}'"
+  hazards:
+    - "Don't hold &Agent across mutations — it borrows from the Vec inside AgentStore"
+
+crates/core/src/focus.rs:
+  purpose: "Navigation state: which page, which panel, which agent is active."
+  key_types:
+    Page: "Enum of all TUI pages. ALL/LEFT/RIGHT arrays control nav bar order."
+    FocusState: "Current page, active panel, active agent."
+  invariants:
+    - "Page::ALL must contain every variant exactly once"
+    - "Page::LEFT + Page::RIGHT must equal Page::ALL"
+
+crates/app/src/app.rs:
+  purpose: "Central application state. Owns all stores, registries, PTYs. Handles widget actions."
+  key_types:
+    App: "God struct — holds agents, turns, traces, PTYs, terminals, sessions, registries."
+  invariants:
+    - "ptys, terms, and vte_parsers share the same keyset (AgentId)"
+    - "session_map and pid_map must stay in sync — both updated in spawn_agent and kill_agent"
+    - "Every AgentId in ptys also exists in agents store"
+  hazards:
+    - "spawn_agent branches on display_mode — Provider mode creates PTY, Native mode creates Session"
+    - "handle_widget_action is the single dispatch point for all UI events"
+
+crates/app/src/input.rs:
+  purpose: "Keyboard and mouse event dispatch. Routes to page-specific handlers."
+  hazards:
+    - "Ctrl+N spawns agent globally regardless of page"
+    - "Provider mode forwards raw key bytes to PTY — no widget handling"
+
+crates/app/src/main.rs:
+  purpose: "Event loop. Terminal setup/teardown. Render cycle. Per-frame page refresh."
+  hazards:
+    - "Page-specific refresh (database, classifiers, prompts) runs every frame when on that page"
+
+crates/widgets/src/agent_pane.rs:
+  purpose: "Agent display — grid of agents or focused single agent. Two-box layout with info bar."
+  key_types:
+    AgentPaneWidget: "Renders agent content (PTY or native timeline) + provider info bar."
+    ProviderInfoBar: "Trait for provider-specific bottom bar rendering."
+    ClaudeInfoBar: "Claude-specific info bar — shows name, model, turns, tokens, prompt."
+  invariants:
+    - "Info bar height is always 3 rows (border + 1 content + border)"
+    - "Top box has no bottom border — shares border line with info box"
+  examples:
+    - "To add a new provider info bar: implement ProviderInfoBar, add match arm in info_bar_for_provider()"
+
+crates/widgets/src/classifiers_page.rs:
+  purpose: "Page listing all registered classifiers with toggle, detail view."
+  examples:
+    - "Canonical pattern for adding a new list page — follow this file's structure"
+
+crates/agent/src/provider.rs:
+  purpose: "Provider trait definition. The interface between orchestrator and LLM backends."
+  key_types:
+    Provider: "trait — name(), generate(), build_command(). One impl per LLM vendor."
+    GenerateError: "Enum of all generation failure modes."
+  examples:
+    - "To add a new provider: implement Provider trait, see claude.rs for reference"
+
+crates/agent/src/providers/claude.rs:
+  purpose: "Claude Code CLI provider. Spawns claude CLI, parses JSON output."
+  hazards:
+    - "CLI output is a JSON array of entries, not a single object"
+    - "Model field comes from assistant message, not from system init entry"
+
+crates/storage/src/traces.rs:
+  purpose: "SQLite persistence for traces and turns."
+  invariants:
+    - "Traces table schema must match Trace struct fields"
+    - "Writes go through StorageHandle (background thread), reads through Database (sync)"

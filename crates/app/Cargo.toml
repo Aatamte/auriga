@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+orchestrator-agent = { path = "../agent" }
 orchestrator-core = { path = "../core" }
 orchestrator-grid = { path = "../grid" }
 orchestrator-widgets = { path = "../widgets" }
@@ -13,6 +14,7 @@ orchestrator-claude-log = { path = "../claude-log" }
 orchestrator-mcp = { path = "../mcp" }
 orchestrator-storage = { path = "../storage" }
 orchestrator-classifier = { path = "../classifier" }
+orchestrator-skills = { path = "../skills" }
 orchestrator-ml = { path = "../ml" }
 serde = { workspace = true }
 serde_json = { workspace = true }

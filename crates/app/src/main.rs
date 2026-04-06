@@ -1,5 +1,6 @@
 mod app;
 mod config;
+pub mod context;
 mod helpers;
 mod input;
 mod threads;
@@ -92,6 +93,27 @@ fn main() -> Result<()> {
     let backend = CrosstermBackend::new(stdout());
     let mut terminal = Terminal::new(backend)?;
 
+    // Generation thread for native mode (managed agent loop)
+    let (gen_req_tx, gen_req_rx) = mpsc::channel::<(
+        orchestrator_core::AgentId,
+        orchestrator_agent::GenerateRequest,
+    )>();
+    let (gen_resp_tx, gen_resp_rx) = mpsc::channel();
+    thread::spawn(move || {
+        use orchestrator_agent::Provider;
+        while let Ok((agent_id, request)) = gen_req_rx.recv() {
+            let provider = orchestrator_agent::providers::claude::ClaudeProvider;
+            let result: Result<orchestrator_agent::GenerateResponse, String> =
+                match provider.generate(&request) {
+                    Ok(resp) => Ok(resp),
+                    Err(e) => Err(e.to_string()),
+                };
+            if gen_resp_tx.send((agent_id, result)).is_err() {
+                break;
+            }
+        }
+    });
+
     let mut app = App::new(
         input_rx,
         file_rx,
@@ -102,11 +124,16 @@ fn main() -> Result<()> {
         db_reader,
         db_path,
         claude_watcher,
+        gen_req_tx,
+        gen_resp_rx,
         &config,
     );
 
     // Load classifier configs from .agent-orchestrator/classifiers/
     app.load_classifier_configs();
+
+    // Register built-in skills
+    app.register_default_skills();
 
     // Apply disabled classifiers from config
     for name in &config.disabled_classifiers {
@@ -137,6 +164,7 @@ fn main() -> Result<()> {
         app.poll_mcp_requests();
         app.poll_doctor_events();
         app.poll_claude_logs();
+        app.poll_generate_responses();
         app.file_tree.refresh_caches();
 
         // Live-refresh pages when active
@@ -148,6 +176,12 @@ fn main() -> Result<()> {
         }
         if app.focus.page == Page::Classifiers {
             app.refresh_classifiers();
+        }
+        if app.focus.page == Page::Prompts {
+            app.refresh_prompts();
+        }
+        if app.focus.page == Page::Context {
+            app.refresh_context();
         }
 
         // Render
@@ -202,6 +236,14 @@ fn main() -> Result<()> {
                     app.widgets
                         .classifiers_page
                         .render(frame, content_area, &ctx);
+                    app.last_cell_rects = Vec::new();
+                }
+                Page::Prompts => {
+                    app.widgets.prompts_page.render(frame, content_area, &ctx);
+                    app.last_cell_rects = Vec::new();
+                }
+                Page::Context => {
+                    app.widgets.context_page.render(frame, content_area, &ctx);
                     app.last_cell_rects = Vec::new();
                 }
                 Page::Doctor => {

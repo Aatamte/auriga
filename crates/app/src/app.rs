@@ -5,24 +5,35 @@ use alacritty_terminal::term::{Config as TermConfig, Term};
 use alacritty_terminal::vte;
 use anyhow::Result;
 use crossterm::event::Event;
+use orchestrator_agent::providers::claude::ClaudeProvider;
+use orchestrator_agent::{
+    AgentConfig, AgentMode, GenerateRequest, GenerateResponse, Provider, Session,
+};
 use orchestrator_classifier::{
     ClassifierRegistry, ClassifierTrigger, ClassifierType, CliRuntime, CliRuntimeConfig,
     ConfigClassifier, LlmRuntimeStub,
 };
 use orchestrator_claude_log::{to_turn_builder, ClaudeWatchEvent, ClaudeWatchHandle};
-use orchestrator_core::{AgentId, AgentStore, FileTree, FocusState, TraceStore, TurnStore};
-use orchestrator_grid::CellRect;
+use orchestrator_core::{
+    AgentId, AgentStore, DisplayMode, FileTree, FocusState, TraceStore, TurnStore,
+};
+use orchestrator_grid::{CellRect, Grid};
 use orchestrator_mcp::doctor::{DoctorMcpServer, DoctorRequest, DoctorResponse};
 use orchestrator_mcp::{AgentInfo, McpEvent, McpRequest, McpResponse};
 use orchestrator_ml::MlRuntime;
 use orchestrator_pty::PtyHandle;
+use orchestrator_skills::SkillRegistry;
 use orchestrator_storage::{Database, StorageHandle};
 use orchestrator_widgets::{
-    DbMetadataView, QueryResultView, SettingsField, TableInfoView, WidgetAction, WidgetRegistry,
+    DbMetadataView, FieldKind, QueryResultView, SettingsField, TableInfoView, WidgetAction,
+    WidgetRegistry,
 };
 use ratatui::layout::Rect;
 use std::collections::HashMap;
 use std::path::PathBuf;
+
+/// When false, always use the built-in default layout instead of reading from config.json.
+const USE_FS_LAYOUT: bool = false;
 use std::sync::mpsc;
 
 pub struct App {
@@ -36,6 +47,7 @@ pub struct App {
     pub file_tree: FileTree,
     pub grid: orchestrator_grid::Grid,
     pub widgets: WidgetRegistry,
+    pub default_display_mode: DisplayMode,
     pub ptys: HashMap<AgentId, PtyHandle>,
     pub terms: HashMap<AgentId, Term<EventProxy>>,
     pub vte_parsers: HashMap<AgentId, vte::ansi::Processor<vte::ansi::StdSyncHandler>>,
@@ -52,7 +64,11 @@ pub struct App {
     pub last_cell_rects: Vec<CellRect>,
     pub last_nav_rect: Rect,
     pub classifier_registry: ClassifierRegistry,
+    pub skill_registry: SkillRegistry,
     pub doctor_mcp: Option<DoctorMcpServer>,
+    pub sessions: HashMap<AgentId, Session>,
+    pub generate_tx: mpsc::Sender<(AgentId, GenerateRequest)>,
+    pub generate_rx: mpsc::Receiver<(AgentId, Result<GenerateResponse, String>)>,
     pub running: bool,
 }
 
@@ -68,6 +84,8 @@ impl App {
         db_reader: Database,
         db_path: PathBuf,
         claude_watcher: Option<ClaudeWatchHandle>,
+        generate_tx: mpsc::Sender<(AgentId, GenerateRequest)>,
+        generate_rx: mpsc::Receiver<(AgentId, Result<GenerateResponse, String>)>,
         config: &crate::config::Config,
     ) -> Self {
         let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
@@ -86,8 +104,16 @@ impl App {
             db_path,
             focus: FocusState::new(),
             file_tree,
-            grid: config.layout.clone(),
+            grid: if USE_FS_LAYOUT {
+                config.layout.clone()
+            } else {
+                Grid::default()
+            },
             widgets,
+            default_display_mode: match config.display_mode.as_str() {
+                "provider" => DisplayMode::Provider,
+                _ => DisplayMode::Native,
+            },
             ptys: HashMap::new(),
             terms: HashMap::new(),
             vte_parsers: HashMap::new(),
@@ -102,9 +128,19 @@ impl App {
             last_cell_rects: Vec::new(),
             last_nav_rect: Rect::default(),
             classifier_registry: ClassifierRegistry::new(),
+            skill_registry: SkillRegistry::new(),
             doctor_mcp: None,
+            sessions: HashMap::new(),
+            generate_tx,
+            generate_rx,
             running: true,
         }
+    }
+
+    /// Register built-in default skills.
+    pub fn register_default_skills(&mut self) {
+        self.skill_registry
+            .register(Box::new(orchestrator_skills::CodeReviewSkill));
     }
 
     /// Load classifier configs from `.agent-orchestrator/classifiers/` and register them.
@@ -172,41 +208,96 @@ impl App {
         (cols, rows)
     }
 
-    pub fn spawn_agent(&mut self, provider: &str) -> Result<AgentId> {
-        let id = self.agents.create(provider);
-        let agent_name = self
-            .agents
-            .get(id)
-            .expect("agent just created")
-            .name
-            .clone();
-        let cwd = std::env::current_dir()?;
-        let (cols, rows) = self.pane_size();
-        let pty = PtyHandle::spawn(
-            provider,
-            &cwd,
-            cols,
-            rows,
-            &[("ORCHESTRATOR_AGENT_NAME", &agent_name)],
-        )?;
-        if let Some(pid) = pty.child_pid() {
-            if let Some(agent) = self.agents.get_mut(id) {
-                agent.child_pid = Some(pid);
-            }
-            self.pid_map.insert(pid, id);
+    /// Build the default AgentConfig, injecting system prompt + repository context.
+    pub fn default_agent_config(&self) -> AgentConfig {
+        let prompts = load_system_prompts();
+        let prompt_content = prompts
+            .iter()
+            .find(|p| p.enabled && p.provider == "claude")
+            .map(|p| p.content.clone());
+
+        // Combine: system prompt + Layer 0 map context
+        let map_content = crate::context::load_map_content();
+        let system_prompt = build_system_prompt(prompt_content.as_deref(), &map_content);
+
+        AgentConfig {
+            name: "agent".into(),
+            provider: "claude".into(),
+            model: String::new(),
+            max_tokens: 0,
+            system_prompt,
+            temperature: None,
+            mode: AgentMode::NativeCli,
+            provider_config: serde_json::json!({}),
         }
-        let term_config = TermConfig {
-            scrolling_history: 10_000,
-            ..Default::default()
-        };
-        let term_size = TermSize {
-            cols: cols as usize,
-            lines: rows as usize,
-        };
-        let term = Term::new(term_config, &term_size, EventProxy);
-        self.ptys.insert(id, pty);
-        self.terms.insert(id, term);
-        self.vte_parsers.insert(id, vte::ansi::Processor::new());
+    }
+
+    pub fn spawn_agent(&mut self, config: &AgentConfig) -> Result<AgentId> {
+        let id = self.agents.create(&config.provider);
+        if let Some(agent) = self.agents.get_mut(id) {
+            agent.display_mode = self.default_display_mode;
+            // Track which system prompt was used (derive from config name or explicit)
+            if config.system_prompt.is_some() {
+                // Check if this matches a named prompt file
+                let prompts = load_system_prompts();
+                if let Some(p) = prompts.iter().find(|p| {
+                    p.enabled && Some(p.content.as_str()) == config.system_prompt.as_deref()
+                }) {
+                    agent.system_prompt_name = Some(p.name.clone());
+                }
+            }
+        }
+
+        match self.default_display_mode {
+            DisplayMode::Native => {
+                // Managed mode: create a Session, no PTY
+                let session = Session::new(config.clone(), vec![]);
+                self.sessions.insert(id, session);
+            }
+            DisplayMode::Provider => {
+                // Provider mode: spawn PTY + terminal emulator
+                let provider = resolve_provider(&config.provider);
+                let spec = provider.build_command(config).ok_or_else(|| {
+                    anyhow::anyhow!("provider '{}' cannot build CLI command", config.provider)
+                })?;
+
+                let agent_name = self
+                    .agents
+                    .get(id)
+                    .expect("agent just created")
+                    .name
+                    .clone();
+                let cwd = std::env::current_dir()?;
+                let (cols, rows) = self.pane_size();
+
+                let mut env: Vec<(&str, &str)> = vec![("ORCHESTRATOR_AGENT_NAME", &agent_name)];
+                let env_owned: Vec<(String, String)> = spec.env.clone();
+                for (k, v) in &env_owned {
+                    env.push((k.as_str(), v.as_str()));
+                }
+
+                let args: Vec<&str> = spec.args.iter().map(|s| s.as_str()).collect();
+                let pty = PtyHandle::spawn_with_args(&spec.program, &args, &cwd, cols, rows, &env)?;
+                if let Some(pid) = pty.child_pid() {
+                    if let Some(agent) = self.agents.get_mut(id) {
+                        agent.child_pid = Some(pid);
+                    }
+                    self.pid_map.insert(pid, id);
+                }
+                let term_config = TermConfig {
+                    scrolling_history: 10_000,
+                    ..Default::default()
+                };
+                let term_size = TermSize {
+                    cols: cols as usize,
+                    lines: rows as usize,
+                };
+                let term = Term::new(term_config, &term_size, EventProxy);
+                self.ptys.insert(id, pty);
+                self.terms.insert(id, term);
+                self.vte_parsers.insert(id, vte::ansi::Processor::new());
+            }
+        }
 
         if self.focus.active_agent.is_none() {
             self.focus.set_active_agent(id);
@@ -298,6 +389,11 @@ impl App {
     }
 
     pub fn poll_pty_output(&mut self) {
+        use std::time::{Duration, Instant};
+
+        const DEBOUNCE: Duration = Duration::from_secs(2);
+        let now = Instant::now();
+
         let ids: Vec<AgentId> = self.ptys.keys().copied().collect();
         for id in ids {
             if let Some(pty) = self.ptys.get(&id) {
@@ -311,11 +407,17 @@ impl App {
                     }
                 }
                 if let Some(agent) = self.agents.get_mut(id) {
-                    agent.status = if got_data {
-                        orchestrator_core::AgentStatus::Working
+                    if got_data {
+                        agent.last_active_at = Some(now);
+                        agent.status = orchestrator_core::AgentStatus::Working;
                     } else {
-                        orchestrator_core::AgentStatus::Idle
-                    };
+                        let still_active = agent
+                            .last_active_at
+                            .is_some_and(|t| now.duration_since(t) < DEBOUNCE);
+                        if !still_active {
+                            agent.status = orchestrator_core::AgentStatus::Idle;
+                        }
+                    }
                 }
             }
         }
@@ -549,6 +651,94 @@ impl App {
         }
     }
 
+    /// Send the input buffer contents as a user message to the active native agent.
+    pub fn send_native_message(&mut self) {
+        let text = std::mem::take(&mut self.widgets.agent_pane.input_buffer);
+        if text.trim().is_empty() {
+            return;
+        }
+        let Some(agent_id) = self.focus.active_agent else {
+            return;
+        };
+        let Some(session) = self.sessions.get_mut(&agent_id) else {
+            return;
+        };
+
+        let content = orchestrator_core::MessageContent::Text(text.clone());
+        if let Some(request) = session.send_message(content.clone()) {
+            // Insert user turn into TurnStore via bridge
+            let now = chrono_now();
+            let turn_builder = orchestrator_agent::user_message_to_turn(
+                &orchestrator_agent::Message {
+                    role: orchestrator_agent::Role::User,
+                    content,
+                },
+                &session.id,
+                &now,
+            );
+            self.turns.insert(agent_id, turn_builder);
+
+            // Ensure trace exists
+            if self.traces.active_trace(agent_id).is_none() {
+                let provider = self
+                    .agents
+                    .get(agent_id)
+                    .map(|a| a.provider.clone())
+                    .unwrap_or_default();
+                self.traces
+                    .create(agent_id, session.id.0.to_string(), provider, now);
+            }
+
+            // Send to generation thread
+            let _ = self.generate_tx.send((agent_id, request));
+            self.widgets.agent_pane.generating = true;
+        }
+    }
+
+    /// Drain generation responses from the background thread.
+    pub fn poll_generate_responses(&mut self) {
+        while let Ok((agent_id, result)) = self.generate_rx.try_recv() {
+            match result {
+                Ok(response) => {
+                    // Insert assistant turn via bridge
+                    let now = chrono_now();
+                    if let Some(session) = self.sessions.get(&agent_id) {
+                        let turn_builder =
+                            orchestrator_agent::response_to_turn(&response, &session.id, &now);
+                        self.turns.insert(agent_id, turn_builder);
+
+                        // Update trace
+                        if let Some(trace) = self.traces.active_trace_mut(agent_id) {
+                            trace.turn_count += 1;
+                            trace.token_usage.input_tokens += response.usage.input_tokens;
+                            trace.token_usage.output_tokens += response.usage.output_tokens;
+                            if trace.model.is_none() {
+                                trace.model = Some(response.model.clone());
+                            }
+                        }
+
+                        // Store provider session ID for conversation resumption
+                        let provider_sid = response.provider_session_id.clone();
+
+                        // Process session state machine
+                        if let Some(session) = self.sessions.get_mut(&agent_id) {
+                            let _tool_calls = session.receive_response(response);
+                            // Store provider session ID if this is the first response
+                            if session.provider_session_id.is_none() {
+                                session.provider_session_id = provider_sid;
+                            }
+                        }
+                    }
+                    self.widgets.agent_pane.generating = false;
+                }
+                Err(err) => {
+                    tracing::warn!(agent = ?agent_id, error = %err, "generation failed");
+                    self.widgets.agent_pane.generating = false;
+                }
+            }
+        }
+    }
+
     pub fn hit_test(&self, col: u16, row: u16) -> Option<(orchestrator_grid::WidgetId, u16, u16)> {
         for cell in &self.last_cell_rects {
             let r = &cell.rect;
@@ -626,6 +816,15 @@ impl App {
                     tracing::error!(error = %e, "failed to start doctor");
                 }
             }
+            WidgetAction::ToggleSkill(name) => {
+                let currently_enabled = self.skill_registry.is_enabled(&name);
+                self.skill_registry.set_enabled(&name, !currently_enabled);
+                self.refresh_prompts();
+            }
+            WidgetAction::ToggleSystemPrompt(name) => {
+                self.toggle_system_prompt(&name);
+                self.refresh_prompts();
+            }
             WidgetAction::ToggleClassifier(name) => {
                 let currently_enabled = self.classifier_registry.is_enabled(&name);
                 self.classifier_registry
@@ -698,66 +897,36 @@ impl App {
             ),
         )?;
 
-        // Spawn claude with --mcp-config and --system-prompt
-        let id = self.agents.create("claude");
-        let agent_name = self
-            .agents
-            .get(id)
-            .expect("agent just created")
-            .name
-            .clone();
-        let cwd = std::env::current_dir()?;
-        let (cols, rows) = self.pane_size();
+        // Spawn doctor agent via AgentConfig
         let config_str = config_path.to_string_lossy().to_string();
-        let system_prompt = concat!(
-            "You are the doctor agent for an AI agent orchestrator. ",
-            "Your job is to analyze agent traces, turns, and classifier results ",
-            "to diagnose issues, identify patterns, and provide actionable insights.\n\n",
-            "You have access to these MCP tools:\n",
-            "- list_traces: Browse recent agent sessions with token usage and status\n",
-            "- get_trace: Drill into a specific trace to see all turns and classifications\n",
-            "- list_classifiers: See registered classifiers and their status\n",
-            "- create_classifier: Create a new classifier config with name, trigger, type, and output labels\n",
-            "- label_trace: Assign a training label to a trace for a specific classifier\n",
-            "- list_training_labels: See labeled traces and label distribution for a classifier\n",
-            "- train_classifier: Train an ML classifier using labeled traces\n\n",
-            "You also have the /aorch-review skill which provides a step-by-step review workflow.\n\n",
-            "Start by understanding what data is available, then analyze patterns ",
-            "like excessive token usage, repeated errors, classifier flags, or unusual behavior.",
-        );
-        let pty = PtyHandle::spawn_with_args(
-            "claude",
-            &[
-                "--mcp-config",
-                &config_str,
-                "--system-prompt",
-                system_prompt,
-            ],
-            &cwd,
-            cols,
-            rows,
-            &[("ORCHESTRATOR_AGENT_NAME", &agent_name)],
-        )?;
-
-        if let Some(pid) = pty.child_pid() {
-            if let Some(agent) = self.agents.get_mut(id) {
-                agent.child_pid = Some(pid);
-            }
-            self.pid_map.insert(pid, id);
-        }
-
-        let term_config = TermConfig {
-            scrolling_history: 10_000,
-            ..Default::default()
+        let doctor_config = AgentConfig {
+            name: "doctor".into(),
+            provider: "claude".into(),
+            model: "claude-sonnet-4-20250514".into(),
+            max_tokens: 8192,
+            system_prompt: Some(concat!(
+                "You are the doctor agent for an AI agent orchestrator. ",
+                "Your job is to analyze agent traces, turns, and classifier results ",
+                "to diagnose issues, identify patterns, and provide actionable insights.\n\n",
+                "You have access to these MCP tools:\n",
+                "- list_traces: Browse recent agent sessions with token usage and status\n",
+                "- get_trace: Drill into a specific trace to see all turns and classifications\n",
+                "- list_classifiers: See registered classifiers and their status\n",
+                "- create_classifier: Create a new classifier config with name, trigger, type, and output labels\n",
+                "- label_trace: Assign a training label to a trace for a specific classifier\n",
+                "- list_training_labels: See labeled traces and label distribution for a classifier\n",
+                "- train_classifier: Train an ML classifier using labeled traces\n\n",
+                "You also have the /aorch-review skill which provides a step-by-step review workflow.\n\n",
+                "Start by understanding what data is available, then analyze patterns ",
+                "like excessive token usage, repeated errors, classifier flags, or unusual behavior.",
+            ).into()),
+            temperature: None,
+            mode: AgentMode::NativeCli,
+            provider_config: serde_json::json!({
+                "mcp_config_path": config_str,
+            }),
         };
-        let term_size = TermSize {
-            cols: cols as usize,
-            lines: rows as usize,
-        };
-        let term = Term::new(term_config, &term_size, EventProxy);
-        self.ptys.insert(id, pty);
-        self.terms.insert(id, term);
-        self.vte_parsers.insert(id, vte::ansi::Processor::new());
+        let id = self.spawn_agent(&doctor_config)?;
 
         self.widgets.doctor_page.set_agent(id);
         self.doctor_mcp = Some(doctor);
@@ -859,24 +1028,198 @@ impl App {
             .collect();
         self.widgets.classifiers_page.set_classifiers(details);
     }
+
+    pub fn refresh_context(&mut self) {
+        let store = crate::context::load();
+
+        let map_view = if store.map.content.is_empty() {
+            None
+        } else {
+            Some(orchestrator_widgets::ContextMapView {
+                content: store.map.content,
+                last_verified: store.map.last_verified,
+            })
+        };
+        self.widgets.context_page.set_map(map_view);
+
+        let annotations: Vec<orchestrator_widgets::AnnotationView> = store
+            .annotations
+            .iter()
+            .map(|(path, ann)| orchestrator_widgets::AnnotationView {
+                path: path.clone(),
+                purpose: ann.purpose.clone(),
+            })
+            .collect();
+        self.widgets.context_page.set_annotations(annotations);
+
+        let deep: Vec<orchestrator_widgets::DeepContextView> = store
+            .deep_contexts
+            .iter()
+            .map(|d| orchestrator_widgets::DeepContextView {
+                name: d.name.clone(),
+                last_verified: d.last_verified.clone(),
+            })
+            .collect();
+        self.widgets.context_page.set_deep_contexts(deep);
+    }
+
+    pub fn refresh_prompts(&mut self) {
+        let skills = self.skill_registry.skills_info();
+        self.widgets.prompts_page.set_skills(skills);
+
+        let prompts = load_system_prompts();
+        self.widgets.prompts_page.set_system_prompts(prompts);
+    }
+
+    fn toggle_system_prompt(&self, name: &str) {
+        let prompts_dir = crate::config::dir_path().join("prompts");
+        let path = prompts_dir.join(format!("{}.json", name));
+        if let Ok(contents) = std::fs::read_to_string(&path) {
+            if let Ok(mut value) = serde_json::from_str::<serde_json::Value>(&contents) {
+                let currently = value.get("enabled").and_then(|v| v.as_bool()).unwrap_or(true);
+                value["enabled"] = serde_json::Value::Bool(!currently);
+                if let Ok(json) = serde_json::to_string_pretty(&value) {
+                    let _ = std::fs::write(&path, json);
+                }
+            }
+        }
+    }
+}
+
+/// Load system prompt JSON files from `.agent-orchestrator/prompts/`.
+/// Each file: `{ "name": "...", "description": "...", "content": "...", "provider": "...", "enabled": true }`
+fn load_system_prompts() -> Vec<orchestrator_widgets::SystemPromptEntry> {
+    let prompts_dir = crate::config::dir_path().join("prompts");
+    let Ok(entries) = std::fs::read_dir(&prompts_dir) else {
+        return Vec::new();
+    };
+
+    let mut prompts = Vec::new();
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.extension().and_then(|e| e.to_str()) != Some("json") {
+            continue;
+        }
+        let Ok(contents) = std::fs::read_to_string(&path) else {
+            continue;
+        };
+        let Ok(value) = serde_json::from_str::<serde_json::Value>(&contents) else {
+            continue;
+        };
+        let name = value
+            .get("name")
+            .and_then(|v| v.as_str())
+            .unwrap_or("unknown")
+            .to_string();
+        let description = value
+            .get("description")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        let content = value
+            .get("content")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        let provider = value
+            .get("provider")
+            .and_then(|v| v.as_str())
+            .unwrap_or("claude")
+            .to_string();
+        let enabled = value
+            .get("enabled")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(true);
+
+        prompts.push(orchestrator_widgets::SystemPromptEntry {
+            name,
+            description,
+            content,
+            provider,
+            enabled,
+        });
+    }
+    prompts.sort_by(|a, b| a.name.cmp(&b.name));
+    prompts
+}
+
+/// Combine a system prompt and repository context map into a single system prompt string.
+/// Returns None if both are empty.
+fn build_system_prompt(prompt: Option<&str>, map_content: &str) -> Option<String> {
+    let has_prompt = prompt.is_some_and(|p| !p.is_empty());
+    let has_map = !map_content.is_empty();
+
+    match (has_prompt, has_map) {
+        (true, true) => Some(format!(
+            "{}\n\n---\n\n# Repository Context\n\n{}",
+            prompt.unwrap(),
+            map_content
+        )),
+        (true, false) => Some(prompt.unwrap().to_string()),
+        (false, true) => Some(format!("# Repository Context\n\n{}", map_content)),
+        (false, false) => None,
+    }
+}
+
+fn resolve_provider(name: &str) -> Box<dyn Provider> {
+    match name {
+        "claude" => Box::new(ClaudeProvider),
+        other => panic!("unknown provider: {}", other),
+    }
 }
 
 fn config_to_fields(config: &crate::config::Config) -> Vec<SettingsField> {
-    vec![SettingsField {
-        label: "MCP Port",
-        key: "mcp_port",
-        value: config.mcp_port.to_string(),
-        description: "Port for the MCP JSON-RPC server",
-    }]
+    vec![
+        SettingsField {
+            label: "MCP Port",
+            key: "mcp_port",
+            value: config.mcp_port.to_string(),
+            description: "Port for the MCP JSON-RPC server",
+            kind: FieldKind::Text,
+        },
+        SettingsField {
+            label: "Default Provider",
+            key: "default_provider",
+            value: config.default_provider.clone(),
+            description: "Provider for new agents (ctrl+n)",
+            kind: FieldKind::Toggle(vec!["claude".into()]),
+        },
+        SettingsField {
+            label: "Claude",
+            key: "claude_enabled",
+            value: config.claude_enabled.to_string(),
+            description: "Enable Claude provider",
+            kind: FieldKind::Toggle(vec!["true".into(), "false".into()]),
+        },
+        SettingsField {
+            label: "Display Mode",
+            key: "display_mode",
+            value: config.display_mode.clone(),
+            description: "native = our TUI, provider = provider's own TUI",
+            kind: FieldKind::Toggle(vec!["native".into(), "provider".into()]),
+        },
+    ]
 }
 
 fn fields_to_config(values: &[(&str, &str)]) -> crate::config::Config {
     let mut config = crate::config::Config::default();
     for &(key, val) in values {
-        if key == "mcp_port" {
-            if let Ok(port) = val.parse::<u16>() {
-                config.mcp_port = port;
+        match key {
+            "mcp_port" => {
+                if let Ok(port) = val.parse::<u16>() {
+                    config.mcp_port = port;
+                }
             }
+            "default_provider" => {
+                config.default_provider = val.to_string();
+            }
+            "claude_enabled" => {
+                config.claude_enabled = val == "true";
+            }
+            "display_mode" => {
+                config.display_mode = val.to_string();
+            }
+            _ => {}
         }
     }
     config

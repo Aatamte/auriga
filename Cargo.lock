@@ -1678,6 +1678,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "04744f49eae99ab78e0d5c0b603ab218f515ea8cfe5a456d7629ad883a3b6e7d"
 
 [[package]]
+name = "orchestrator-agent"
+version = "0.1.0"
+dependencies = [
+ "orchestrator-core",
+ "serde",
+ "serde_json",
+ "uuid",
+]
+
+[[package]]
 name = "orchestrator-app"
 version = "0.1.0"
 dependencies = [
@@ -1686,6 +1696,7 @@ dependencies = [
  "crossterm",
  "ignore",
  "notify",
+ "orchestrator-agent",
  "orchestrator-classifier",
  "orchestrator-claude-log",
  "orchestrator-core",
@@ -1693,6 +1704,7 @@ dependencies = [
  "orchestrator-mcp",
  "orchestrator-ml",
  "orchestrator-pty",
+ "orchestrator-skills",
  "orchestrator-storage",
  "orchestrator-terminal",
  "orchestrator-widgets",
@@ -1848,8 +1860,10 @@ dependencies = [
  "crossterm",
  "orchestrator-core",
  "orchestrator-grid",
+ "orchestrator-skills",
  "orchestrator-terminal",
  "ratatui",
+ "serde_json",
 ]
 
 [[package]]

@@ -6,7 +6,7 @@ mod scrollable;
 mod trace;
 mod turn;
 
-pub use agent::{Agent, AgentId, AgentStatus, AgentStore};
+pub use agent::{Agent, AgentId, AgentStatus, AgentStore, DisplayMode};
 pub use file_activity::{FileActivity, FileActivityStore};
 pub use file_tree::{FileEntry, FileTree};
 pub use focus::{FocusState, Page, Panel};

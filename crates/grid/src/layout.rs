@@ -6,14 +6,14 @@ use serde::{Deserialize, Serialize};
 pub enum WidgetId {
     AgentList,
     AgentPane,
-    TokenChart,
     RecentActivity,
     FileTree,
-    StatusBar,
     SettingsPage,
     DatabasePage,
     ClassifiersPage,
     ClassifierPanel,
+    PromptsPage,
+    ContextPage,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -65,7 +65,7 @@ impl Default for Grid {
             columns: 12,
             rows: vec![
                 Row {
-                    height: Size::Percent("15%".to_string()),
+                    height: Size::Percent("20%".to_string()),
                     cells: vec![
                         Cell {
                             widget: WidgetId::AgentList,
@@ -75,28 +75,12 @@ impl Default for Grid {
                         Cell {
                             widget: WidgetId::AgentPane,
                             span: 10,
-                            rowspan: 6,
+                            rowspan: 3,
                         },
                     ],
                 },
                 Row {
-                    height: Size::Percent("12%".to_string()),
-                    cells: vec![Cell {
-                        widget: WidgetId::TokenChart,
-                        span: 2,
-                        rowspan: 1,
-                    }],
-                },
-                Row {
-                    height: Size::Percent("15%".to_string()),
-                    cells: vec![Cell {
-                        widget: WidgetId::ClassifierPanel,
-                        span: 2,
-                        rowspan: 1,
-                    }],
-                },
-                Row {
-                    height: Size::Percent("15%".to_string()),
+                    height: Size::Percent("30%".to_string()),
                     cells: vec![Cell {
                         widget: WidgetId::RecentActivity,
                         span: 2,
@@ -104,17 +88,9 @@ impl Default for Grid {
                     }],
                 },
                 Row {
-                    height: Size::Percent("30%".to_string()),
+                    height: Size::Percent("50%".to_string()),
                     cells: vec![Cell {
                         widget: WidgetId::FileTree,
-                        span: 2,
-                        rowspan: 1,
-                    }],
-                },
-                Row {
-                    height: Size::Percent("13%".to_string()),
-                    cells: vec![Cell {
-                        widget: WidgetId::StatusBar,
                         span: 2,
                         rowspan: 1,
                     }],
@@ -238,10 +214,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn default_grid_has_six_rows() {
+    fn default_grid_has_four_rows() {
         let grid = Grid::default();
         assert_eq!(grid.columns, 12);
-        assert_eq!(grid.rows.len(), 6);
+        assert_eq!(grid.rows.len(), 3);
     }
 
     #[test]
@@ -251,17 +227,11 @@ mod tests {
         assert_eq!(grid.rows[0].cells[0].span, 2);
         assert_eq!(grid.rows[0].cells[1].widget, WidgetId::AgentPane);
         assert_eq!(grid.rows[0].cells[1].span, 10);
-        assert_eq!(grid.rows[0].cells[1].rowspan, 6);
-        assert_eq!(grid.rows[1].cells[0].widget, WidgetId::TokenChart);
+        assert_eq!(grid.rows[0].cells[1].rowspan, 3);
+        assert_eq!(grid.rows[1].cells[0].widget, WidgetId::RecentActivity);
         assert_eq!(grid.rows[1].cells[0].span, 2);
-        assert_eq!(grid.rows[2].cells[0].widget, WidgetId::ClassifierPanel);
+        assert_eq!(grid.rows[2].cells[0].widget, WidgetId::FileTree);
         assert_eq!(grid.rows[2].cells[0].span, 2);
-        assert_eq!(grid.rows[3].cells[0].widget, WidgetId::RecentActivity);
-        assert_eq!(grid.rows[3].cells[0].span, 2);
-        assert_eq!(grid.rows[4].cells[0].widget, WidgetId::FileTree);
-        assert_eq!(grid.rows[4].cells[0].span, 2);
-        assert_eq!(grid.rows[5].cells[0].widget, WidgetId::StatusBar);
-        assert_eq!(grid.rows[5].cells[0].span, 2);
     }
 
     #[test]
@@ -301,7 +271,7 @@ mod tests {
                 Row {
                     height: Size::Fixed(20),
                     cells: vec![Cell {
-                        widget: WidgetId::TokenChart,
+                        widget: WidgetId::RecentActivity,
                         span: 4,
                         rowspan: 1,
                     }],
@@ -317,7 +287,7 @@ mod tests {
         assert_eq!(rects[0].rect, Rect::new(0, 0, 40, 10));
         assert_eq!(rects[1].widget, WidgetId::AgentPane);
         assert_eq!(rects[1].rect, Rect::new(40, 0, 80, 30));
-        assert_eq!(rects[2].widget, WidgetId::TokenChart);
+        assert_eq!(rects[2].widget, WidgetId::RecentActivity);
         assert_eq!(rects[2].rect, Rect::new(0, 10, 40, 20));
     }
 
@@ -344,7 +314,7 @@ mod tests {
                 Row {
                     height: Size::Fixed(30),
                     cells: vec![Cell {
-                        widget: WidgetId::TokenChart,
+                        widget: WidgetId::RecentActivity,
                         span: 12,
                         rowspan: 1,
                     }],
