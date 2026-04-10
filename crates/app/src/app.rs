@@ -5,7 +5,6 @@ use alacritty_terminal::term::{Config as TermConfig, Term};
 use alacritty_terminal::vte;
 use anyhow::Result;
 use crossterm::event::Event;
-use orchestrator_agent::providers::claude::ClaudeProvider;
 use orchestrator_agent::{
     AgentConfig, AgentMode, GenerateRequest, GenerateResponse, Provider, Session,
 };
@@ -78,7 +77,7 @@ pub struct App {
     pub skill_registry: SkillRegistry,
     pub doctor_mcp: Option<DoctorMcpServer>,
     pub sessions: HashMap<AgentId, Session>,
-    pub generate_tx: mpsc::Sender<(AgentId, GenerateRequest)>,
+    pub generate_tx: mpsc::Sender<(AgentId, String, GenerateRequest)>,
     pub generate_rx: mpsc::Receiver<(AgentId, Result<GenerateResponse, String>)>,
     pub running: bool,
     pub context_injection: bool,
@@ -97,7 +96,7 @@ impl App {
         db_reader: Database,
         db_path: PathBuf,
         claude_watcher: Option<ClaudeWatchHandle>,
-        generate_tx: mpsc::Sender<(AgentId, GenerateRequest)>,
+        generate_tx: mpsc::Sender<(AgentId, String, GenerateRequest)>,
         generate_rx: mpsc::Receiver<(AgentId, Result<GenerateResponse, String>)>,
         config: &crate::config::Config,
     ) -> Self {
@@ -223,14 +222,15 @@ impl App {
         (cols, rows)
     }
 
-    /// Build the default AgentConfig, composing system prompt + repository context.
-    pub fn default_agent_config(&self) -> AgentConfig {
+    /// Build the default AgentConfig for a given provider, composing system
+    /// prompt + repository context.
+    pub fn default_agent_config(&self, provider_name: &str) -> AgentConfig {
         use orchestrator_agent::SystemPromptBuilder;
 
         let prompts = load_system_prompts();
         let prompt_content = prompts
             .iter()
-            .find(|p| p.enabled && p.provider == "claude")
+            .find(|p| p.enabled && p.provider == provider_name)
             .map(|p| p.content.as_str())
             .unwrap_or("");
 
@@ -246,7 +246,7 @@ impl App {
 
         AgentConfig {
             name: "agent".into(),
-            provider: "claude".into(),
+            provider: provider_name.into(),
             model: String::new(),
             max_tokens: 0,
             system_prompt,
@@ -279,7 +279,10 @@ impl App {
                 self.sessions.insert(id, session);
             }
             DisplayMode::Provider => {
-                // Provider mode: spawn PTY + terminal emulator
+                // Provider mode: spawn an interactive shell, then pipe the
+                // provider's CLI command into it as the first line. When the
+                // AI tool exits, the user is left at a live shell — the pane
+                // is an actual terminal that happens to auto-launch claude/codex.
                 let provider = resolve_provider(&config.provider);
                 let spec = provider.build_command(config).ok_or_else(|| {
                     anyhow::anyhow!("provider '{}' cannot build CLI command", config.provider)
@@ -300,8 +303,17 @@ impl App {
                     env.push((k.as_str(), v.as_str()));
                 }
 
-                let args: Vec<&str> = spec.args.iter().map(|s| s.as_str()).collect();
-                let pty = PtyHandle::spawn_with_args(&spec.program, &args, &cwd, cols, rows, &env)?;
+                let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".into());
+                let mut pty = PtyHandle::spawn_with_args(&shell, &["-i"], &cwd, cols, rows, &env)?;
+
+                // Build the command line to inject.
+                let mut cmd_line = shell_quote(&spec.program);
+                for arg in &spec.args {
+                    cmd_line.push(' ');
+                    cmd_line.push_str(&shell_quote(arg));
+                }
+                cmd_line.push('\n');
+                let _ = pty.write_input(cmd_line.as_bytes());
                 if let Some(pid) = pty.child_pid() {
                     if let Some(agent) = self.agents.get_mut(id) {
                         agent.child_pid = Some(pid);
@@ -322,6 +334,53 @@ impl App {
                 self.vte_parsers.insert(id, vte::ansi::Processor::new());
             }
         }
+
+        if self.focus.active_agent.is_none() {
+            self.focus.set_active_agent(id);
+        }
+
+        Ok(id)
+    }
+
+    /// Spawn a plain interactive shell as a new agent, with no AI tool attached.
+    /// Mirrors `spawn_agent`'s Provider-mode branch but skips the command injection.
+    pub fn spawn_shell(&mut self) -> Result<AgentId> {
+        let id = self.agents.create("shell");
+        if let Some(agent) = self.agents.get_mut(id) {
+            agent.display_mode = DisplayMode::Provider;
+        }
+
+        let agent_name = self
+            .agents
+            .get(id)
+            .expect("agent just created")
+            .name
+            .clone();
+        let cwd = std::env::current_dir()?;
+        let (cols, rows) = self.pane_size();
+
+        let env: Vec<(&str, &str)> = vec![("ORCHESTRATOR_AGENT_NAME", &agent_name)];
+        let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".into());
+        let pty = PtyHandle::spawn_with_args(&shell, &["-i"], &cwd, cols, rows, &env)?;
+
+        if let Some(pid) = pty.child_pid() {
+            if let Some(agent) = self.agents.get_mut(id) {
+                agent.child_pid = Some(pid);
+            }
+            self.pid_map.insert(pid, id);
+        }
+        let term_config = TermConfig {
+            scrolling_history: 10_000,
+            ..Default::default()
+        };
+        let term_size = TermSize {
+            cols: cols as usize,
+            lines: rows as usize,
+        };
+        let term = Term::new(term_config, &term_size, EventProxy);
+        self.ptys.insert(id, pty);
+        self.terms.insert(id, term);
+        self.vte_parsers.insert(id, vte::ansi::Processor::new());
 
         if self.focus.active_agent.is_none() {
             self.focus.set_active_agent(id);
@@ -759,19 +818,24 @@ impl App {
             );
             self.turns.insert(agent_id, turn_builder);
 
+            let provider_name = self
+                .agents
+                .get(agent_id)
+                .map(|a| a.provider.clone())
+                .unwrap_or_default();
+
             // Ensure trace exists
             if self.traces.active_trace(agent_id).is_none() {
-                let provider = self
-                    .agents
-                    .get(agent_id)
-                    .map(|a| a.provider.clone())
-                    .unwrap_or_default();
-                self.traces
-                    .create(agent_id, session.id.0.to_string(), provider, now);
+                self.traces.create(
+                    agent_id,
+                    session.id.0.to_string(),
+                    provider_name.clone(),
+                    now,
+                );
             }
 
             // Send to generation thread
-            let _ = self.generate_tx.send((agent_id, request));
+            let _ = self.generate_tx.send((agent_id, provider_name, request));
             self.widgets.agent_pane.generating = true;
         }
     }
@@ -897,9 +961,16 @@ impl App {
                     tracing::error!(error = %e, "failed to start doctor");
                 }
             }
-            WidgetAction::ToggleSkill(name) => {
-                let currently_enabled = self.skill_registry.is_enabled(&name);
-                self.skill_registry.set_enabled(&name, !currently_enabled);
+            WidgetAction::DownloadSkill(name) => {
+                if let Err(e) = self.download_skill(&name) {
+                    tracing::error!(error = %e, skill = %name, "download_skill failed");
+                }
+                self.refresh_prompts();
+            }
+            WidgetAction::DeleteSkill(name) => {
+                if let Err(e) = self.delete_skill(&name) {
+                    tracing::error!(error = %e, skill = %name, "delete_skill failed");
+                }
                 self.refresh_prompts();
             }
             WidgetAction::ToggleSystemPrompt(name) => {
@@ -1152,13 +1223,34 @@ impl App {
     }
 
     pub fn refresh_prompts(&mut self) {
-        let skills = self.skill_registry.skills_info();
+        let root = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+        let is_downloaded = |name: &str| crate::skills_storage::is_downloaded(&root, name);
+        let skills = self.skill_registry.skills_info(&is_downloaded);
         self.widgets.prompts_page.set_skills(skills);
 
         let prompts = load_system_prompts();
         self.widgets.prompts_page.set_system_prompts(prompts);
 
         self.widgets.prompts_page.context_enabled = self.context_injection;
+    }
+
+    /// Write the named skill's `SKILL.md` to the current project's
+    /// `.claude/skills/` and `.agents/skills/` directories.
+    fn download_skill(&self, name: &str) -> anyhow::Result<()> {
+        let skill = self
+            .skill_registry
+            .get(name)
+            .ok_or_else(|| anyhow::anyhow!("unknown skill: '{name}'"))?;
+        let root = std::env::current_dir()?;
+        crate::skills_storage::write_skill(&root, skill)?;
+        Ok(())
+    }
+
+    /// Remove the named skill from both on-disk locations.
+    fn delete_skill(&self, name: &str) -> anyhow::Result<()> {
+        let root = std::env::current_dir()?;
+        crate::skills_storage::delete_skill(&root, name)?;
+        Ok(())
     }
 
     fn toggle_system_prompt(&self, name: &str) {
@@ -1237,9 +1329,59 @@ fn load_system_prompts() -> Vec<orchestrator_widgets::SystemPromptEntry> {
 }
 
 fn resolve_provider(name: &str) -> Box<dyn Provider> {
-    match name {
-        "claude" => Box::new(ClaudeProvider),
-        other => panic!("unknown provider: {}", other),
+    orchestrator_agent::providers::resolve(name)
+}
+
+/// Quote a single argument for safe injection into an interactive shell.
+/// Bare words of `[A-Za-z0-9_\-./=:]` pass through; anything else is
+/// single-quoted with `'` → `'\''` escaping.
+fn shell_quote(s: &str) -> String {
+    if s.is_empty() {
+        return "''".into();
+    }
+    let safe = s
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || "-_.=:/".contains(c));
+    if safe {
+        return s.to_string();
+    }
+    let escaped = s.replace('\'', "'\\''");
+    format!("'{}'", escaped)
+}
+
+#[cfg(test)]
+mod shell_quote_tests {
+    use super::shell_quote;
+
+    #[test]
+    fn bare_words_pass_through() {
+        assert_eq!(shell_quote("claude"), "claude");
+        assert_eq!(shell_quote("--model"), "--model");
+        assert_eq!(shell_quote("gpt-5"), "gpt-5");
+        assert_eq!(shell_quote("/tmp/mcp.json"), "/tmp/mcp.json");
+        assert_eq!(shell_quote("key=value"), "key=value");
+    }
+
+    #[test]
+    fn empty_becomes_empty_quotes() {
+        assert_eq!(shell_quote(""), "''");
+    }
+
+    #[test]
+    fn spaces_get_quoted() {
+        assert_eq!(shell_quote("hello world"), "'hello world'");
+    }
+
+    #[test]
+    fn single_quotes_escaped() {
+        assert_eq!(shell_quote("it's"), "'it'\\''s'");
+    }
+
+    #[test]
+    fn special_chars_quoted() {
+        assert_eq!(shell_quote("a$b"), "'a$b'");
+        assert_eq!(shell_quote("a;b"), "'a;b'");
+        assert_eq!(shell_quote("a&b"), "'a&b'");
     }
 }
 

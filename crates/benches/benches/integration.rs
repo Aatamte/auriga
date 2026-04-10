@@ -162,6 +162,7 @@ fn bench_widget_click_dispatch(c: &mut Criterion) {
                 focus: &focus,
                 file_tree: &file_tree,
                 render_term: &render_term_fn,
+                hidden_pages: &[],
             };
             for row in 0..20u16 {
                 black_box(widgets.agent_list.handle_click(row, 0, &ctx));
@@ -308,6 +309,7 @@ fn bench_full_event_to_render_cycle(c: &mut Criterion) {
                         focus: focus_copy,
                         file_tree: &file_tree,
                         render_term: &render_term_fn,
+                        hidden_pages: &[],
                     };
 
                     for cell_rect in &cell_rects {
@@ -348,6 +350,7 @@ fn bench_worst_case_render(c: &mut Criterion) {
                         focus: &focus,
                         file_tree: &file_tree,
                         render_term: &render_term_fn,
+                        hidden_pages: &[],
                     };
 
                     for cell_rect in &cell_rects {

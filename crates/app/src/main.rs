@@ -3,6 +3,7 @@ mod config;
 pub mod context;
 mod helpers;
 mod input;
+mod skills_storage;
 mod threads;
 mod types;
 
@@ -96,16 +97,18 @@ fn main() -> Result<()> {
     let backend = CrosstermBackend::new(stdout());
     let mut terminal = Terminal::new(backend)?;
 
-    // Generation thread for native mode (managed agent loop)
+    // Generation thread for native mode (managed agent loop).
+    // Each request carries the agent's provider name so we can dispatch
+    // to the right backend (claude, codex, ...).
     let (gen_req_tx, gen_req_rx) = mpsc::channel::<(
         orchestrator_core::AgentId,
+        String,
         orchestrator_agent::GenerateRequest,
     )>();
     let (gen_resp_tx, gen_resp_rx) = mpsc::channel();
     thread::spawn(move || {
-        use orchestrator_agent::Provider;
-        while let Ok((agent_id, request)) = gen_req_rx.recv() {
-            let provider = orchestrator_agent::providers::claude::ClaudeProvider;
+        while let Ok((agent_id, provider_name, request)) = gen_req_rx.recv() {
+            let provider = orchestrator_agent::providers::resolve(&provider_name);
             let result: Result<orchestrator_agent::GenerateResponse, String> =
                 match provider.generate(&request) {
                     Ok(resp) => Ok(resp),
@@ -151,8 +154,12 @@ fn main() -> Result<()> {
     {
         let size = terminal.size()?;
         let area = Rect::new(0, 0, size.width, size.height);
-        let [nav_area, content_area] =
-            Layout::vertical([Constraint::Length(1), Constraint::Min(0)]).areas(area);
+        let [nav_area, content_area, _hint_area] = Layout::vertical([
+            Constraint::Length(1),
+            Constraint::Min(0),
+            Constraint::Length(1),
+        ])
+        .areas(area);
         app.last_nav_rect = nav_area;
         app.last_cell_rects = app.grid.compute_rects(content_area);
     }
@@ -196,9 +203,13 @@ fn main() -> Result<()> {
             let area = frame.area();
             let current_page = app.focus.page;
 
-            // Split: tab bar (1 row) + content
-            let [nav_area, content_area] =
-                Layout::vertical([Constraint::Length(1), Constraint::Min(0)]).areas(area);
+            // Split: tab bar (1 row) + content + keybinds footer (1 row)
+            let [nav_area, content_area, hint_area] = Layout::vertical([
+                Constraint::Length(1),
+                Constraint::Min(0),
+                Constraint::Length(1),
+            ])
+            .areas(area);
 
             let hidden = app::hidden_pages();
 
@@ -207,6 +218,9 @@ fn main() -> Result<()> {
                 .nav_bar
                 .render(frame, nav_area, current_page, &hidden);
             app.last_nav_rect = nav_area;
+
+            // Keybinds footer
+            render_keybinds_footer(frame, hint_area);
 
             let terms = &app.terms;
             let term_renderer = |id: AgentId, buf: &mut ratatui::buffer::Buffer, area: Rect| {
@@ -289,6 +303,47 @@ fn main() -> Result<()> {
     out.execute(LeaveAlternateScreen)?;
     disable_raw_mode()?;
     Ok(())
+}
+
+fn render_keybinds_footer(frame: &mut ratatui::Frame, area: Rect) {
+    use ratatui::style::{Color, Modifier, Style};
+    use ratatui::text::{Line, Span};
+    use ratatui::widgets::Paragraph;
+
+    let key = Style::default()
+        .fg(Color::Cyan)
+        .add_modifier(Modifier::BOLD);
+    let desc = Style::default().fg(Color::DarkGray);
+    let sep = Span::styled("   ", desc);
+
+    let spans = vec![
+        Span::raw(" "),
+        Span::styled("^T", key),
+        Span::raw(" "),
+        Span::styled("terminal", desc),
+        sep.clone(),
+        Span::styled("^L", key),
+        Span::raw(" "),
+        Span::styled("claude", desc),
+        sep.clone(),
+        Span::styled("^O", key),
+        Span::raw(" "),
+        Span::styled("codex", desc),
+        sep.clone(),
+        Span::styled("^W", key),
+        Span::raw(" "),
+        Span::styled("close", desc),
+        sep.clone(),
+        Span::styled("^B", key),
+        Span::raw(" "),
+        Span::styled("grid/focus", desc),
+        sep.clone(),
+        Span::styled("^Q", key),
+        Span::raw(" "),
+        Span::styled("quit", desc),
+    ];
+
+    frame.render_widget(Paragraph::new(Line::from(spans)), area);
 }
 
 fn apply_font_size(out: &mut impl std::io::Write, size: u16) {

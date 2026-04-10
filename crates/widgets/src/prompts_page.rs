@@ -1,7 +1,7 @@
 use crate::{RenderContext, Widget, WidgetAction};
 use crossterm::event::{KeyCode, KeyEvent};
 use orchestrator_core::{ScrollDirection, Scrollable};
-use orchestrator_skills::{SkillStatus, SkillTrigger};
+use orchestrator_skills::SkillStatus;
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
@@ -121,16 +121,40 @@ impl PromptsPage {
                             let name = self.system_prompts[idx].name.clone();
                             Some(WidgetAction::ToggleSystemPrompt(name))
                         }
-                        Section::Skills => {
-                            let name = self.skills[idx].name.clone();
-                            Some(WidgetAction::ToggleSkill(name))
-                        }
+                        Section::Skills => Some(self.skill_toggle_action(idx)),
                     };
+                }
+            }
+            KeyCode::Char('d') => {
+                // 'd' = download the selected skill (only meaningful in Skills section).
+                if let Some((Section::Skills, idx)) = self.selected_item() {
+                    if !self.skills[idx].downloaded {
+                        return Some(WidgetAction::DownloadSkill(self.skills[idx].name.clone()));
+                    }
+                }
+            }
+            KeyCode::Char('x') => {
+                // 'x' = delete the selected downloaded skill.
+                if let Some((Section::Skills, idx)) = self.selected_item() {
+                    if self.skills[idx].downloaded {
+                        return Some(WidgetAction::DeleteSkill(self.skills[idx].name.clone()));
+                    }
                 }
             }
             _ => {}
         }
         None
+    }
+
+    /// Enter/Space on a skill row flips its on-disk state: download if
+    /// absent, delete if present.
+    fn skill_toggle_action(&self, idx: usize) -> WidgetAction {
+        let skill = &self.skills[idx];
+        if skill.downloaded {
+            WidgetAction::DeleteSkill(skill.name.clone())
+        } else {
+            WidgetAction::DownloadSkill(skill.name.clone())
+        }
     }
 
     fn build_lines(&self, width: u16) -> Vec<Line<'static>> {
@@ -222,7 +246,7 @@ impl PromptsPage {
         // Help line
         lines.push(Line::from(""));
         lines.push(Line::styled(
-            "  ↑↓ select  │  Enter/Space toggle",
+            "  ↑↓ select  │  Enter toggle  │  d download  │  x delete",
             Style::default().fg(Color::DarkGray),
         ));
 
@@ -346,7 +370,7 @@ impl Widget for PromptsPage {
                 let h = render_skill_owned(s, false, width).len();
                 if visible_row < line_idx + h {
                     self.selected = ss + i;
-                    return Some(WidgetAction::ToggleSkill(s.name.clone()));
+                    return Some(self.skill_toggle_action(i));
                 }
                 line_idx += h;
             }
@@ -426,8 +450,8 @@ fn render_system_prompt_owned(
 fn render_skill_owned(s: &SkillStatus, is_selected: bool, width: u16) -> Vec<Line<'static>> {
     let mut lines = Vec::new();
 
-    let checkbox = if s.enabled { "[x]" } else { "[ ]" };
-    let check_color = if s.enabled {
+    let checkbox = if s.downloaded { "[✓]" } else { "[ ]" };
+    let check_color = if s.downloaded {
         Color::Green
     } else {
         Color::DarkGray
@@ -440,14 +464,18 @@ fn render_skill_owned(s: &SkillStatus, is_selected: bool, width: u16) -> Vec<Lin
         Style::default().fg(Color::White)
     };
 
-    let (trigger_label, trigger_color) = trigger_display(&s.trigger);
+    let (status_label, status_color) = if s.downloaded {
+        ("downloaded", Color::Green)
+    } else {
+        ("not installed", Color::DarkGray)
+    };
 
     lines.push(Line::from(vec![
         Span::styled(checkbox, Style::default().fg(check_color)),
         Span::raw(" "),
         Span::styled(s.name.clone(), name_style),
         Span::styled("  │  ", Style::default().fg(Color::DarkGray)),
-        Span::styled(trigger_label, Style::default().fg(trigger_color)),
+        Span::styled(status_label, Style::default().fg(status_color)),
     ]));
 
     if !s.description.is_empty() {
@@ -463,14 +491,6 @@ fn render_skill_owned(s: &SkillStatus, is_selected: bool, width: u16) -> Vec<Lin
     ));
 
     lines
-}
-
-fn trigger_display(trigger: &SkillTrigger) -> (&'static str, Color) {
-    match trigger {
-        SkillTrigger::OnDemand => ("on-demand", Color::Cyan),
-        SkillTrigger::OnSessionStart => ("session-start", Color::Green),
-        SkillTrigger::OnSessionEnd => ("session-end", Color::Yellow),
-    }
 }
 
 #[cfg(test)]
@@ -509,16 +529,14 @@ mod tests {
     fn sample_skills() -> Vec<SkillStatus> {
         vec![
             SkillStatus {
-                name: "file-search".into(),
-                description: "Search files by content".into(),
-                trigger: SkillTrigger::OnDemand,
-                enabled: true,
+                name: "code-review".into(),
+                description: "Review recent changes".into(),
+                downloaded: false,
             },
             SkillStatus {
-                name: "session-init".into(),
-                description: "Load context on session start".into(),
-                trigger: SkillTrigger::OnSessionStart,
-                enabled: false,
+                name: "commit-message".into(),
+                description: "Write a conventional commit".into(),
+                downloaded: true,
             },
         ]
     }
@@ -601,17 +619,69 @@ mod tests {
     }
 
     #[test]
-    fn toggle_skill_from_skills_section() {
+    fn enter_on_not_downloaded_skill_emits_download() {
         let mut page = PromptsPage::new();
         page.set_system_prompts(sample_prompts());
         page.set_skills(sample_skills());
 
-        // Navigate past system prompts + context toggle into skills
+        // Navigate past 2 system prompts + context toggle into the first skill.
         page.handle_key(make_key(KeyCode::Down));
         page.handle_key(make_key(KeyCode::Down));
         page.handle_key(make_key(KeyCode::Down));
         let action = page.handle_key(make_key(KeyCode::Enter));
-        assert!(matches!(action, Some(WidgetAction::ToggleSkill(name)) if name == "file-search"));
+        assert!(matches!(action, Some(WidgetAction::DownloadSkill(n)) if n == "code-review"));
+    }
+
+    #[test]
+    fn enter_on_downloaded_skill_emits_delete() {
+        let mut page = PromptsPage::new();
+        page.set_system_prompts(sample_prompts());
+        page.set_skills(sample_skills());
+
+        // Navigate to the second skill (already downloaded).
+        for _ in 0..4 {
+            page.handle_key(make_key(KeyCode::Down));
+        }
+        let action = page.handle_key(make_key(KeyCode::Enter));
+        assert!(matches!(action, Some(WidgetAction::DeleteSkill(n)) if n == "commit-message"));
+    }
+
+    #[test]
+    fn d_on_not_downloaded_skill_emits_download() {
+        let mut page = PromptsPage::new();
+        page.set_skills(sample_skills());
+        // Selection starts on context toggle (no prompts); one down → first skill.
+        page.handle_key(make_key(KeyCode::Down));
+        let action = page.handle_key(make_key(KeyCode::Char('d')));
+        assert!(matches!(action, Some(WidgetAction::DownloadSkill(n)) if n == "code-review"));
+    }
+
+    #[test]
+    fn d_on_downloaded_skill_is_noop() {
+        let mut page = PromptsPage::new();
+        page.set_skills(sample_skills());
+        // Navigate to the downloaded skill (2nd).
+        page.handle_key(make_key(KeyCode::Down));
+        page.handle_key(make_key(KeyCode::Down));
+        assert!(page.handle_key(make_key(KeyCode::Char('d'))).is_none());
+    }
+
+    #[test]
+    fn x_on_downloaded_skill_emits_delete() {
+        let mut page = PromptsPage::new();
+        page.set_skills(sample_skills());
+        page.handle_key(make_key(KeyCode::Down));
+        page.handle_key(make_key(KeyCode::Down));
+        let action = page.handle_key(make_key(KeyCode::Char('x')));
+        assert!(matches!(action, Some(WidgetAction::DeleteSkill(n)) if n == "commit-message"));
+    }
+
+    #[test]
+    fn x_on_not_downloaded_skill_is_noop() {
+        let mut page = PromptsPage::new();
+        page.set_skills(sample_skills());
+        page.handle_key(make_key(KeyCode::Down));
+        assert!(page.handle_key(make_key(KeyCode::Char('x'))).is_none());
     }
 
     #[test]
@@ -638,19 +708,6 @@ mod tests {
         let lines = render_skill_owned(s, false, 80);
         // header + description + separator = 3
         assert_eq!(lines.len(), 3);
-    }
-
-    #[test]
-    fn trigger_display_values() {
-        assert_eq!(trigger_display(&SkillTrigger::OnDemand).0, "on-demand");
-        assert_eq!(
-            trigger_display(&SkillTrigger::OnSessionStart).0,
-            "session-start"
-        );
-        assert_eq!(
-            trigger_display(&SkillTrigger::OnSessionEnd).0,
-            "session-end"
-        );
     }
 
     #[test]

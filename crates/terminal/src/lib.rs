@@ -1,5 +1,6 @@
 use alacritty_terminal::grid::Dimensions;
 use alacritty_terminal::term::cell::{Cell, Flags};
+use alacritty_terminal::term::TermMode;
 use alacritty_terminal::vte::ansi::{Color as AnsiColor, NamedColor};
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
@@ -40,6 +41,32 @@ pub fn render_term<T>(term: &alacritty_terminal::term::Term<T>, buf: &mut Buffer
         let buf_cell = &mut buf[(x, y)];
         buf_cell.set_char(cell.c);
         buf_cell.set_style(style);
+    }
+
+    // Draw the cursor as a reversed block on top of whatever cell it sits on.
+    // Only render when SHOW_CURSOR mode is set and the cursor is in the viewport
+    // (i.e. the user hasn't scrolled away into history).
+    if term.mode().contains(TermMode::SHOW_CURSOR) {
+        let cursor_point = grid.cursor.point;
+        let cursor_row = (cursor_point.line.0 - viewport_top) as isize;
+        let cursor_col = cursor_point.column.0 as isize;
+        if cursor_row >= 0
+            && (cursor_row as usize) < num_rows
+            && cursor_col >= 0
+            && (cursor_col as usize) < num_cols
+        {
+            let x = area.x + cursor_col as u16;
+            let y = area.y + cursor_row as u16;
+            if x < area.x + area.width && y < area.y + area.height {
+                let buf_cell = &mut buf[(x, y)];
+                // If the underlying cell is blank, show a visible block.
+                if buf_cell.symbol().is_empty() || buf_cell.symbol() == " " {
+                    buf_cell.set_char(' ');
+                }
+                let existing = buf_cell.style();
+                buf_cell.set_style(existing.add_modifier(Modifier::REVERSED));
+            }
+        }
     }
 }
 

@@ -1,11 +1,34 @@
-use crate::{Skill, SkillContext, SkillId, SkillResult, SkillTrigger};
+use crate::Skill;
 
-/// Built-in skill that reviews recent changes for correctness.
+/// Built-in skill: review recent changes before declaring work done.
 ///
-/// When invoked, it produces a structured review prompt that the agent
-/// can use to audit its own recent edits — checking for bugs, missed
-/// edge cases, and style violations.
+/// When an agent downloads this skill into a project, its `SKILL.md`
+/// lives at `.claude/skills/code-review/SKILL.md` (and the mirror
+/// under `.agents/`). The agent's own skill system triggers the
+/// body below.
 pub struct CodeReviewSkill;
+
+const BODY: &str = "\
+# Code Review
+
+Use this skill whenever you are about to declare a task done. Review \
+every change you made in this session before finishing.
+
+For each changed file, check:
+
+1. **Correctness** — does the logic actually do what was intended? \
+   Trace the flow with concrete values.
+2. **Edge cases** — inputs or states that would break it. Empty \
+   collections, missing optionals, zero, boundary indices.
+3. **Error handling** — failures are handled, not silenced. No \
+   `unwrap` on user input, no swallowed errors.
+4. **Tests** — existing tests still pass. New logic has new tests.
+5. **Style** — matches the surrounding code conventions.
+
+List any issues you find. If everything looks good, say so briefly. \
+Do not perform the review silently — produce a short written summary \
+so the user can see what you checked.
+";
 
 impl Skill for CodeReviewSkill {
     fn name(&self) -> &str {
@@ -13,78 +36,30 @@ impl Skill for CodeReviewSkill {
     }
 
     fn description(&self) -> &str {
-        "Review recent code changes for correctness, bugs, and style"
+        "Review recent code changes for correctness, edge cases, error \
+         handling, tests, and style. Use before declaring a task done."
     }
 
-    fn trigger(&self) -> SkillTrigger {
-        SkillTrigger::OnDemand
+    fn body(&self) -> &str {
+        BODY
     }
-
-    fn execute(&self, ctx: &SkillContext) -> anyhow::Result<SkillResult> {
-        let instructions = concat!(
-            "Review the changes you have made in this session.\n\n",
-            "For each changed file, check:\n",
-            "1. Correctness — does the logic do what was intended?\n",
-            "2. Edge cases — are there inputs or states that would break it?\n",
-            "3. Error handling — are failures handled, not silenced?\n",
-            "4. Tests — do existing tests still pass? Are new tests needed?\n",
-            "5. Style — does it match the surrounding code conventions?\n\n",
-            "List any issues found. If everything looks good, say so briefly.",
-        );
-
-        Ok(SkillResult {
-            id: SkillId::new(),
-            skill_name: self.name().into(),
-            agent_id: ctx.agent_id,
-            timestamp: chrono_now(),
-            success: true,
-            payload: serde_json::json!({ "instructions": instructions }),
-        })
-    }
-}
-
-fn chrono_now() -> String {
-    // Simple ISO-ish timestamp without pulling in chrono
-    let dur = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default();
-    format!("{}s", dur.as_secs())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use orchestrator_core::AgentId;
-
-    fn test_ctx() -> SkillContext {
-        SkillContext {
-            agent_id: AgentId::from_u128(1),
-            arguments: serde_json::Value::Null,
-        }
-    }
 
     #[test]
     fn name_and_description() {
-        let skill = CodeReviewSkill;
-        assert_eq!(skill.name(), "code-review");
-        assert!(!skill.description().is_empty());
+        assert_eq!(CodeReviewSkill.name(), "code-review");
+        assert!(!CodeReviewSkill.description().is_empty());
     }
 
     #[test]
-    fn trigger_is_on_demand() {
-        let skill = CodeReviewSkill;
-        assert_eq!(skill.trigger(), SkillTrigger::OnDemand);
-    }
-
-    #[test]
-    fn execute_returns_instructions() {
-        let skill = CodeReviewSkill;
-        let result = skill.execute(&test_ctx()).unwrap();
-        assert_eq!(result.skill_name, "code-review");
-        assert!(result.success);
-        assert!(result.payload["instructions"]
-            .as_str()
-            .unwrap()
-            .contains("Review the changes"));
+    fn body_is_non_empty_markdown() {
+        let body = CodeReviewSkill.body();
+        assert!(body.starts_with("# Code Review"));
+        assert!(body.contains("Correctness"));
+        assert!(body.contains("Edge cases"));
     }
 }

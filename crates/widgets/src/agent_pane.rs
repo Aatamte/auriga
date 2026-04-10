@@ -78,10 +78,22 @@ impl ProviderInfoBar for ClaudeInfoBar {
     }
 }
 
+/// Codex-specific info bar. Currently delegates to `ClaudeInfoBar`'s layout
+/// (the data shape is provider-agnostic); split when codex needs distinct fields.
+pub struct CodexInfoBar;
+
+impl ProviderInfoBar for CodexInfoBar {
+    fn render_spans<'a>(&self, data: &InfoBarData<'a>) -> Vec<Span<'a>> {
+        ClaudeInfoBar.render_spans(data)
+    }
+}
+
 /// Returns the info bar renderer for a given provider name.
-fn info_bar_for_provider(_provider: &str) -> Box<dyn ProviderInfoBar> {
-    // Currently only Claude. Add match arms for "codex", etc.
-    Box::new(ClaudeInfoBar)
+fn info_bar_for_provider(provider: &str) -> Box<dyn ProviderInfoBar> {
+    match provider {
+        "codex" => Box::new(CodexInfoBar),
+        _ => Box::new(ClaudeInfoBar),
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -594,6 +606,28 @@ impl Widget for AgentPaneWidget {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn info_bar_for_provider_routes_codex_and_claude() {
+        let data = InfoBarData {
+            agent_name: "a1",
+            model: "gpt-5",
+            turn_count: 2,
+            total_tokens: 1234,
+            status_dot: "●",
+            status_color: Color::Green,
+            show_back: false,
+            system_prompt_name: None,
+        };
+        let codex_spans = info_bar_for_provider("codex").render_spans(&data);
+        let claude_spans = info_bar_for_provider("claude").render_spans(&data);
+        let fallback_spans = info_bar_for_provider("unknown").render_spans(&data);
+        assert!(!codex_spans.is_empty());
+        assert!(!claude_spans.is_empty());
+        // Today codex delegates to claude's layout, so span counts should match.
+        assert_eq!(codex_spans.len(), claude_spans.len());
+        assert_eq!(fallback_spans.len(), claude_spans.len());
+    }
 
     #[test]
     fn grid_rects_single_agent() {

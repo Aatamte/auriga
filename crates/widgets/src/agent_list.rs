@@ -35,11 +35,12 @@ impl Widget for AgentListWidget {
         frame.render_widget(block, area);
 
         let agents = ctx.agents.list();
+        let list_height = inner.height as usize;
         self.scroll.set_item_count(agents.len());
-        self.scroll.set_visible_height(inner.height as usize);
+        self.scroll.set_visible_height(list_height);
 
         let range = self.scroll.visible_range();
-        let lines: Vec<Line> = agents[range.clone()]
+        let lines: Vec<Line> = agents[range]
             .iter()
             .map(|agent| {
                 let is_active = ctx.focus.active_agent == Some(agent.id);
@@ -129,7 +130,7 @@ mod tests {
     }
 
     #[test]
-    fn click_valid_agent_returns_select_action() {
+    fn click_first_row_selects_first_agent() {
         let mut widget = AgentListWidget::new();
         let mut agents = AgentStore::new();
         let id = agents.create("claude");
@@ -150,7 +151,7 @@ mod tests {
         agents.create("claude");
 
         with_ctx!(agents, |ctx| {
-            assert!(widget.handle_click(5, 0, &ctx).is_none());
+            assert!(widget.handle_click(10, 0, &ctx).is_none());
         });
     }
 

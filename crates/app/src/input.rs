@@ -14,10 +14,23 @@ pub fn handle_key(app: &mut App, key: KeyEvent) {
                 app.running = false;
                 return;
             }
-            KeyCode::Char('n') => {
-                let config = app.default_agent_config();
+            KeyCode::Char('t') => {
+                if let Err(e) = app.spawn_shell() {
+                    tracing::error!(error = %e, "failed to spawn shell");
+                }
+                return;
+            }
+            KeyCode::Char('l') => {
+                let config = app.default_agent_config("claude");
                 if let Err(e) = app.spawn_agent(&config) {
-                    tracing::error!(error = %e, "failed to spawn agent");
+                    tracing::error!(error = %e, "failed to spawn claude agent");
+                }
+                return;
+            }
+            KeyCode::Char('o') => {
+                let config = app.default_agent_config("codex");
+                if let Err(e) = app.spawn_agent(&config) {
+                    tracing::error!(error = %e, "failed to spawn codex agent");
                 }
                 return;
             }
@@ -119,25 +132,29 @@ pub fn handle_mouse(app: &mut App, mouse: MouseEvent) {
 
     match mouse.kind {
         MouseEventKind::Down(MouseButton::Left) => {
-            let terms = &app.terms;
-            let term_renderer =
-                |id: orchestrator_core::AgentId, buf: &mut ratatui::buffer::Buffer, area: Rect| {
+            let action = {
+                let terms = &app.terms;
+                let term_renderer = |id: orchestrator_core::AgentId,
+                                     buf: &mut ratatui::buffer::Buffer,
+                                     area: Rect| {
                     if let Some(term) = terms.get(&id) {
                         orchestrator_terminal::render_term(term, buf, area);
                     }
                 };
-            let hidden = crate::app::hidden_pages();
-            let ctx = RenderContext {
-                agents: &app.agents,
-                turns: &app.turns,
-                traces: &app.traces,
-                focus: &app.focus,
-                file_tree: &app.file_tree,
-                render_term: &term_renderer,
-                hidden_pages: &hidden,
+                let hidden = crate::app::hidden_pages();
+                let ctx = RenderContext {
+                    agents: &app.agents,
+                    turns: &app.turns,
+                    traces: &app.traces,
+                    focus: &app.focus,
+                    file_tree: &app.file_tree,
+                    render_term: &term_renderer,
+                    hidden_pages: &hidden,
+                };
+                let widget = app.widgets.get_mut(widget_name);
+                widget.handle_click(local_row, local_col, &ctx)
             };
-            let widget = app.widgets.get_mut(widget_name);
-            if let Some(action) = widget.handle_click(local_row, local_col, &ctx) {
+            if let Some(action) = action {
                 app.handle_widget_action(action);
             }
         }

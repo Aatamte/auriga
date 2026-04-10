@@ -80,9 +80,10 @@ pub enum WidgetAction {
         offset: u64,
     },
     ToggleClassifier(String),
-    ToggleSkill(String),
     ToggleSystemPrompt(String),
     ToggleContextInjection,
+    DownloadSkill(String),
+    DeleteSkill(String),
     StartDoctor,
 }
 

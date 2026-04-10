@@ -174,6 +174,7 @@ fn bench_full_render_cycle(c: &mut Criterion) {
                         focus: &focus,
                         file_tree: &file_tree,
                         render_term: &render_term_fn,
+                        hidden_pages: &[],
                     };
 
                     for cell_rect in &cell_rects {
@@ -224,6 +225,7 @@ fn bench_full_render_cycle_many_agents(c: &mut Criterion) {
                         focus: &focus,
                         file_tree: &file_tree,
                         render_term: &render_term_fn,
+                        hidden_pages: &[],
                     };
 
                     for cell_rect in &cell_rects {
