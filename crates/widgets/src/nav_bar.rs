@@ -12,7 +12,7 @@ impl NavBarWidget {
         Self
     }
 
-    pub fn render(&self, frame: &mut Frame, area: Rect, current_page: Page) {
+    pub fn render(&self, frame: &mut Frame, area: Rect, current_page: Page, hidden: &[Page]) {
         if area.height == 0 || area.width == 0 {
             return;
         }
@@ -30,20 +30,30 @@ impl NavBarWidget {
         // Left group
         let mut left_spans = Vec::new();
         left_spans.push(Span::raw(" "));
-        for (i, &page) in Page::LEFT.iter().enumerate() {
+        let left_visible: Vec<_> = Page::LEFT
+            .iter()
+            .filter(|p| !hidden.contains(p))
+            .copied()
+            .collect();
+        for (i, page) in left_visible.iter().enumerate() {
             if i > 0 {
                 left_spans.push(Span::styled(" │ ", Style::default().fg(Color::DarkGray)));
             }
-            left_spans.push(Span::styled(page.label(), tab_style(page)));
+            left_spans.push(Span::styled(page.label(), tab_style(*page)));
         }
 
         // Right group
         let mut right_spans = Vec::new();
-        for (i, &page) in Page::RIGHT.iter().enumerate() {
+        let right_visible: Vec<_> = Page::RIGHT
+            .iter()
+            .filter(|p| !hidden.contains(p))
+            .copied()
+            .collect();
+        for (i, page) in right_visible.iter().enumerate() {
             if i > 0 {
                 right_spans.push(Span::styled(" │ ", Style::default().fg(Color::DarkGray)));
             }
-            right_spans.push(Span::styled(page.label(), tab_style(page)));
+            right_spans.push(Span::styled(page.label(), tab_style(*page)));
         }
         right_spans.push(Span::raw(" "));
 
@@ -64,8 +74,8 @@ impl NavBarWidget {
     }
 
     /// Hit-test a click at the given column. Returns the page if a tab was clicked.
-    pub fn handle_click(&self, col: u16, area: Rect) -> Option<Page> {
-        TabLayout::compute(area.width).hit_test(col, area)
+    pub fn handle_click(&self, col: u16, area: Rect, hidden: &[Page]) -> Option<Page> {
+        TabLayout::compute(area.width, hidden).hit_test(col, area)
     }
 }
 
@@ -81,24 +91,34 @@ struct TabLayout {
 }
 
 impl TabLayout {
-    fn compute(area_width: u16) -> Self {
+    fn compute(area_width: u16, hidden: &[Page]) -> Self {
         let mut tabs = Vec::new();
 
         // Left group
         let mut col: u16 = 1; // leading space
-        for (i, &page) in Page::LEFT.iter().enumerate() {
+        let left_visible: Vec<_> = Page::LEFT
+            .iter()
+            .filter(|p| !hidden.contains(p))
+            .copied()
+            .collect();
+        for (i, page) in left_visible.iter().enumerate() {
             if i > 0 {
                 col += 3; // " │ "
             }
             let label_len = page.label().len() as u16;
-            tabs.push((page, col, col + label_len));
+            tabs.push((*page, col, col + label_len));
             col += label_len;
         }
         let left_width = col;
 
         // Right group: compute width first, then position from right edge
+        let right_visible: Vec<_> = Page::RIGHT
+            .iter()
+            .filter(|p| !hidden.contains(p))
+            .copied()
+            .collect();
         let mut right_width: u16 = 1; // trailing space
-        for (i, &page) in Page::RIGHT.iter().enumerate() {
+        for (i, page) in right_visible.iter().enumerate() {
             if i > 0 {
                 right_width += 3;
             }
@@ -106,14 +126,14 @@ impl TabLayout {
         }
 
         let mut col = area_width.saturating_sub(right_width);
-        for (i, &page) in Page::RIGHT.iter().enumerate() {
+        for (i, page) in right_visible.iter().enumerate() {
             if i > 0 {
                 col += 3;
             }
             let label_len = page.label().len() as u16;
             // Only add if it doesn't overlap left group
             if col >= left_width {
-                tabs.push((page, col, col + label_len));
+                tabs.push((*page, col, col + label_len));
             }
             col += label_len;
         }

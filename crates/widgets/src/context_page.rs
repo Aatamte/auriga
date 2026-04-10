@@ -13,7 +13,7 @@ use ratatui::Frame;
 #[derive(Debug, Clone)]
 pub struct ContextMapView {
     pub content: String,
-    pub last_verified: Option<String>,
+    pub last_updated: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -25,7 +25,8 @@ pub struct AnnotationView {
 #[derive(Debug, Clone)]
 pub struct DeepContextView {
     pub name: String,
-    pub last_verified: Option<String>,
+    pub description: Option<String>,
+    pub last_updated: Option<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -63,8 +64,7 @@ impl ContextPage {
 
     fn build_lines(&self, width: u16) -> Vec<Line<'static>> {
         let mut lines: Vec<Line<'static>> = Vec::new();
-        let separator =
-            format!(" {}", "─".repeat(width.saturating_sub(2) as usize));
+        let separator = format!(" {}", "─".repeat(width.saturating_sub(2) as usize));
         let dim_sep = Style::default().fg(Color::DarkGray);
 
         // --- Layer 0: Map ---
@@ -77,10 +77,7 @@ impl ContextPage {
         lines.push(Line::styled(separator.clone(), dim_sep));
 
         if let Some(ref map) = self.map {
-            let verified = map
-                .last_verified
-                .as_deref()
-                .unwrap_or("never");
+            let verified = map.last_updated.as_deref().unwrap_or("never");
             lines.push(Line::from(vec![
                 Span::raw("  "),
                 Span::styled("map.md", Style::default().fg(Color::Cyan)),
@@ -143,10 +140,7 @@ impl ContextPage {
                 if !ann.purpose.is_empty() {
                     lines.push(Line::from(vec![
                         Span::raw("    "),
-                        Span::styled(
-                            ann.purpose.clone(),
-                            Style::default().fg(Color::DarkGray),
-                        ),
+                        Span::styled(ann.purpose.clone(), Style::default().fg(Color::DarkGray)),
                     ]));
                 }
             }
@@ -170,10 +164,7 @@ impl ContextPage {
             ));
         } else {
             for doc in &self.deep_contexts {
-                let verified = doc
-                    .last_verified
-                    .as_deref()
-                    .unwrap_or("never");
+                let verified = doc.last_updated.as_deref().unwrap_or("never");
                 lines.push(Line::from(vec![
                     Span::raw("  "),
                     Span::styled(doc.name.clone(), Style::default().fg(Color::Cyan)),
@@ -251,7 +242,7 @@ mod tests {
         let mut page = ContextPage::new();
         page.set_map(Some(ContextMapView {
             content: "# Test Project\nA test.".into(),
-            last_verified: Some("2026-04-06".into()),
+            last_updated: Some("2026-04-06".into()),
         }));
         assert!(page.map.is_some());
     }
@@ -279,7 +270,7 @@ mod tests {
         let mut page = ContextPage::new();
         page.set_map(Some(ContextMapView {
             content: "Line 1\nLine 2\nLine 3".into(),
-            last_verified: Some("2026-04-06".into()),
+            last_updated: Some("2026-04-06".into()),
         }));
         page.set_annotations(vec![
             AnnotationView {
@@ -293,7 +284,8 @@ mod tests {
         ]);
         page.set_deep_contexts(vec![DeepContextView {
             name: "principles".into(),
-            last_verified: Some("2026-04-06".into()),
+            description: Some("Code quality and conventions.".into()),
+            last_updated: Some("2026-04-06".into()),
         }]);
 
         let lines = page.build_lines(80);

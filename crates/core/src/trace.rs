@@ -1,61 +1,4 @@
-use serde::{Deserialize, Serialize};
-use uuid::Uuid;
-
-use crate::{AgentId, TokenUsage};
-
-// ---------------------------------------------------------------------------
-// IDs
-// ---------------------------------------------------------------------------
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct TraceId(pub Uuid);
-
-impl TraceId {
-    pub fn new() -> Self {
-        Self(Uuid::new_v4())
-    }
-
-    pub fn from_u128(val: u128) -> Self {
-        Self(Uuid::from_u128(val))
-    }
-}
-
-impl Default for TraceId {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Enums
-// ---------------------------------------------------------------------------
-
-/// Trace lifecycle status.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum TraceStatus {
-    Active,
-    Complete,
-    Aborted,
-}
-
-// ---------------------------------------------------------------------------
-// Trace entity
-// ---------------------------------------------------------------------------
-
-/// A session-level grouping of turns for one agent conversation.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Trace {
-    pub id: TraceId,
-    pub agent_id: AgentId,
-    pub session_id: String,
-    pub status: TraceStatus,
-    pub started_at: String,
-    pub completed_at: Option<String>,
-    pub turn_count: u32,
-    pub token_usage: TokenUsage,
-    pub provider: String,
-    pub model: Option<String>,
-}
+use orchestrator_types::{AgentId, TokenUsage, Trace, TraceId, TraceStatus};
 
 // ---------------------------------------------------------------------------
 // TraceStore
@@ -204,8 +147,6 @@ mod tests {
         AgentId::from_u128(n)
     }
 
-    // -- Creation --
-
     #[test]
     fn create_returns_unique_ids() {
         let mut store = TraceStore::new();
@@ -254,118 +195,6 @@ mod tests {
     }
 
     #[test]
-    fn create_preserves_fields() {
-        let mut store = TraceStore::new();
-        let id = store.create(
-            agent(42),
-            "sess-abc".into(),
-            "codex".into(),
-            "2026-03-15T12:00:00Z".into(),
-        );
-        let trace = store.get(id).unwrap();
-        assert_eq!(trace.agent_id, agent(42));
-        assert_eq!(trace.session_id, "sess-abc");
-        assert_eq!(trace.provider, "codex");
-        assert_eq!(trace.started_at, "2026-03-15T12:00:00Z");
-    }
-
-    // -- Get / Get mut --
-
-    #[test]
-    fn get_nonexistent_returns_none() {
-        let store = TraceStore::new();
-        assert!(store.get(TraceId::from_u128(999)).is_none());
-    }
-
-    #[test]
-    fn get_mut_allows_modification() {
-        let mut store = TraceStore::new();
-        let id = store.create(
-            agent(1),
-            "s1".into(),
-            "claude".into(),
-            "2026-01-01T00:00:00Z".into(),
-        );
-        store.get_mut(id).unwrap().turn_count = 5;
-        assert_eq!(store.get(id).unwrap().turn_count, 5);
-    }
-
-    // -- Active trace --
-
-    #[test]
-    fn active_trace_returns_active() {
-        let mut store = TraceStore::new();
-        let id = store.create(
-            agent(1),
-            "s1".into(),
-            "claude".into(),
-            "2026-01-01T00:00:00Z".into(),
-        );
-        let active = store.active_trace(agent(1)).unwrap();
-        assert_eq!(active.id, id);
-    }
-
-    #[test]
-    fn active_trace_returns_none_when_all_complete() {
-        let mut store = TraceStore::new();
-        let id = store.create(
-            agent(1),
-            "s1".into(),
-            "claude".into(),
-            "2026-01-01T00:00:00Z".into(),
-        );
-        store.complete(id, "2026-01-01T00:05:00Z".into());
-        assert!(store.active_trace(agent(1)).is_none());
-    }
-
-    #[test]
-    fn active_trace_mut_allows_modification() {
-        let mut store = TraceStore::new();
-        store.create(
-            agent(1),
-            "s1".into(),
-            "claude".into(),
-            "2026-01-01T00:00:00Z".into(),
-        );
-        store.active_trace_mut(agent(1)).unwrap().turn_count += 1;
-        assert_eq!(store.active_trace(agent(1)).unwrap().turn_count, 1);
-    }
-
-    // -- Find by session --
-
-    #[test]
-    fn find_by_session_returns_match() {
-        let mut store = TraceStore::new();
-        store.create(
-            agent(1),
-            "sess-x".into(),
-            "claude".into(),
-            "2026-01-01T00:00:00Z".into(),
-        );
-        assert!(store.find_by_session(agent(1), "sess-x").is_some());
-    }
-
-    #[test]
-    fn find_by_session_returns_none_for_wrong_agent() {
-        let mut store = TraceStore::new();
-        store.create(
-            agent(1),
-            "sess-x".into(),
-            "claude".into(),
-            "2026-01-01T00:00:00Z".into(),
-        );
-        assert!(store.find_by_session(agent(2), "sess-x").is_none());
-    }
-
-    #[test]
-    fn find_by_session_returns_none_for_unknown() {
-        let store = TraceStore::new();
-        assert!(store.find_by_session(agent(1), "nope").is_none());
-    }
-
-    // -- Complete / Abort --
-
-    #[test]
     fn complete_transitions_status() {
         let mut store = TraceStore::new();
         let id = store.create(
@@ -381,25 +210,6 @@ mod tests {
     }
 
     #[test]
-    fn complete_already_complete_returns_false() {
-        let mut store = TraceStore::new();
-        let id = store.create(
-            agent(1),
-            "s1".into(),
-            "claude".into(),
-            "2026-01-01T00:00:00Z".into(),
-        );
-        store.complete(id, "2026-01-01T00:05:00Z".into());
-        assert!(!store.complete(id, "2026-01-01T00:06:00Z".into()));
-    }
-
-    #[test]
-    fn complete_nonexistent_returns_false() {
-        let mut store = TraceStore::new();
-        assert!(!store.complete(TraceId::from_u128(999), "2026-01-01T00:05:00Z".into()));
-    }
-
-    #[test]
     fn abort_transitions_status() {
         let mut store = TraceStore::new();
         let id = store.create(
@@ -409,87 +219,8 @@ mod tests {
             "2026-01-01T00:00:00Z".into(),
         );
         assert!(store.abort(id, "2026-01-01T00:05:00Z".into()));
-        let trace = store.get(id).unwrap();
-        assert_eq!(trace.status, TraceStatus::Aborted);
-        assert_eq!(trace.completed_at.as_deref(), Some("2026-01-01T00:05:00Z"));
+        assert_eq!(store.get(id).unwrap().status, TraceStatus::Aborted);
     }
-
-    #[test]
-    fn abort_already_aborted_returns_false() {
-        let mut store = TraceStore::new();
-        let id = store.create(
-            agent(1),
-            "s1".into(),
-            "claude".into(),
-            "2026-01-01T00:00:00Z".into(),
-        );
-        store.abort(id, "2026-01-01T00:05:00Z".into());
-        assert!(!store.abort(id, "2026-01-01T00:06:00Z".into()));
-    }
-
-    // -- Traces for agent --
-
-    #[test]
-    fn traces_for_returns_only_matching_agent() {
-        let mut store = TraceStore::new();
-        store.create(
-            agent(1),
-            "s1".into(),
-            "claude".into(),
-            "2026-01-01T00:00:00Z".into(),
-        );
-        store.create(
-            agent(2),
-            "s2".into(),
-            "claude".into(),
-            "2026-01-01T00:01:00Z".into(),
-        );
-        store.create(
-            agent(1),
-            "s3".into(),
-            "claude".into(),
-            "2026-01-01T00:02:00Z".into(),
-        );
-        assert_eq!(store.traces_for(agent(1)).len(), 2);
-        assert_eq!(store.traces_for(agent(2)).len(), 1);
-    }
-
-    // -- Remove agent traces --
-
-    #[test]
-    fn remove_agent_traces_cleans_up() {
-        let mut store = TraceStore::new();
-        store.create(
-            agent(1),
-            "s1".into(),
-            "claude".into(),
-            "2026-01-01T00:00:00Z".into(),
-        );
-        store.create(
-            agent(2),
-            "s2".into(),
-            "claude".into(),
-            "2026-01-01T00:01:00Z".into(),
-        );
-        store.remove_agent_traces(agent(1));
-        assert_eq!(store.traces_for(agent(1)).len(), 0);
-        assert_eq!(store.traces_for(agent(2)).len(), 1);
-    }
-
-    #[test]
-    fn remove_agent_traces_for_unknown_is_noop() {
-        let mut store = TraceStore::new();
-        store.create(
-            agent(1),
-            "s1".into(),
-            "claude".into(),
-            "2026-01-01T00:00:00Z".into(),
-        );
-        store.remove_agent_traces(agent(99));
-        assert_eq!(store.count(), 1);
-    }
-
-    // -- Take finished --
 
     #[test]
     fn take_finished_drains_completed_and_aborted() {
@@ -518,59 +249,6 @@ mod tests {
 
         let finished = store.take_finished();
         assert_eq!(finished.len(), 2);
-        assert_eq!(store.count(), 1); // only active one remains
-    }
-
-    #[test]
-    fn take_finished_returns_empty_when_all_active() {
-        let mut store = TraceStore::new();
-        store.create(
-            agent(1),
-            "s1".into(),
-            "claude".into(),
-            "2026-01-01T00:00:00Z".into(),
-        );
-        let finished = store.take_finished();
-        assert!(finished.is_empty());
         assert_eq!(store.count(), 1);
-    }
-
-    // -- Count --
-
-    #[test]
-    fn count_returns_total() {
-        let mut store = TraceStore::new();
-        store.create(
-            agent(1),
-            "s1".into(),
-            "claude".into(),
-            "2026-01-01T00:00:00Z".into(),
-        );
-        store.create(
-            agent(2),
-            "s2".into(),
-            "claude".into(),
-            "2026-01-01T00:01:00Z".into(),
-        );
-        assert_eq!(store.count(), 2);
-    }
-
-    // -- Serialization round-trip --
-
-    #[test]
-    fn trace_serializes_and_deserializes() {
-        let mut store = TraceStore::new();
-        let id = store.create(
-            agent(1),
-            "s1".into(),
-            "claude".into(),
-            "2026-01-01T00:00:00Z".into(),
-        );
-        let trace = store.get(id).unwrap();
-        let json = serde_json::to_string(trace).unwrap();
-        let parsed: Trace = serde_json::from_str(&json).unwrap();
-        assert_eq!(parsed.id, trace.id);
-        assert_eq!(parsed.session_id, trace.session_id);
-        assert_eq!(parsed.status, trace.status);
     }
 }

@@ -30,7 +30,7 @@ fn write_mcp_json(port: u16) -> Result<()> {
             "orchestrator": {
                 "type": "http",
                 "url": format!("http://127.0.0.1:{}", port),
-                "autoApprove": ["list_agents", "send_message"]
+                "autoApprove": ["list_agents", "send_message", "list_context", "get_context"]
             }
         }
     });
@@ -133,14 +133,18 @@ fn main() -> Result<()> {
     );
 
     // Load classifier configs from .agent-orchestrator/classifiers/
-    app.load_classifier_configs();
+    if app::USE_CLASSIFIERS {
+        app.load_classifier_configs();
+    }
 
     // Register built-in skills
     app.register_default_skills();
 
     // Apply disabled classifiers from config
-    for name in &config.disabled_classifiers {
-        app.classifier_registry.set_enabled(name, false);
+    if app::USE_CLASSIFIERS {
+        for name in &config.disabled_classifiers {
+            app.classifier_registry.set_enabled(name, false);
+        }
     }
 
     // Pre-compute layout rects so pane_size() works before first render
@@ -171,13 +175,13 @@ fn main() -> Result<()> {
         app.file_tree.refresh_caches();
 
         // Live-refresh pages when active
-        if app.focus.page == Page::Home {
+        if app::USE_CLASSIFIERS && app.focus.page == Page::Home {
             app.refresh_classifier_panel();
         }
         if app.focus.page == Page::Database {
             app.refresh_database();
         }
-        if app.focus.page == Page::Classifiers {
+        if app::USE_CLASSIFIERS && app.focus.page == Page::Classifiers {
             app.refresh_classifiers();
         }
         if app.focus.page == Page::Prompts {
@@ -196,8 +200,12 @@ fn main() -> Result<()> {
             let [nav_area, content_area] =
                 Layout::vertical([Constraint::Length(1), Constraint::Min(0)]).areas(area);
 
+            let hidden = app::hidden_pages();
+
             // Tab bar
-            app.widgets.nav_bar.render(frame, nav_area, current_page);
+            app.widgets
+                .nav_bar
+                .render(frame, nav_area, current_page, &hidden);
             app.last_nav_rect = nav_area;
 
             let terms = &app.terms;
@@ -206,7 +214,6 @@ fn main() -> Result<()> {
                     render_term(term, buf, area);
                 }
             };
-
             let ctx = RenderContext {
                 agents: &app.agents,
                 turns: &app.turns,
@@ -214,6 +221,7 @@ fn main() -> Result<()> {
                 focus: &app.focus,
                 file_tree: &app.file_tree,
                 render_term: &term_renderer,
+                hidden_pages: &hidden,
             };
 
             // Page content

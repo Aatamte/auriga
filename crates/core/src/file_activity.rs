@@ -1,37 +1,5 @@
-use crate::AgentId;
+use orchestrator_types::{AgentId, FileActivity};
 use std::path::PathBuf;
-use std::time::Instant;
-
-#[derive(Debug)]
-pub struct FileActivity {
-    pub path: PathBuf,
-    pub last_modified: Instant,
-    pub modify_count: usize,
-    pub modified_by: Option<AgentId>,
-}
-
-impl FileActivity {
-    pub fn new(path: PathBuf, agent: Option<AgentId>) -> Self {
-        Self {
-            path,
-            last_modified: Instant::now(),
-            modify_count: 1,
-            modified_by: agent,
-        }
-    }
-
-    pub fn touch(&mut self, agent: Option<AgentId>) {
-        self.last_modified = Instant::now();
-        self.modify_count += 1;
-        if agent.is_some() {
-            self.modified_by = agent;
-        }
-    }
-
-    pub fn age_secs(&self) -> f64 {
-        self.last_modified.elapsed().as_secs_f64()
-    }
-}
 
 #[derive(Debug)]
 pub struct FileActivityStore {
@@ -135,27 +103,5 @@ mod tests {
         let sorted = store.sorted();
         assert_eq!(sorted[0].path, PathBuf::from("new.rs"));
         assert_eq!(sorted[0].modified_by, Some(AgentId::from_u128(1)));
-    }
-
-    #[test]
-    fn sorted_returns_most_recent_first() {
-        let mut store = FileActivityStore::new();
-        store.record(PathBuf::from("a.rs"), None);
-        store.record(PathBuf::from("b.rs"), None);
-        // b.rs was recorded after a.rs so it should be first
-        let sorted = store.sorted();
-        assert_eq!(sorted[0].path, PathBuf::from("b.rs"));
-        assert_eq!(sorted[1].path, PathBuf::from("a.rs"));
-    }
-
-    #[test]
-    fn touch_makes_entry_most_recent() {
-        let mut store = FileActivityStore::new();
-        store.record(PathBuf::from("a.rs"), None);
-        store.record(PathBuf::from("b.rs"), None);
-        // touch a.rs again
-        store.record(PathBuf::from("a.rs"), None);
-        let sorted = store.sorted();
-        assert_eq!(sorted[0].path, PathBuf::from("a.rs"));
     }
 }

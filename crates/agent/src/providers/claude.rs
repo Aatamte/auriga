@@ -1,26 +1,11 @@
-use orchestrator_core::{ContentBlock, StopReason, TokenUsage};
+use orchestrator_types::{
+    AgentConfig, AgentMode, ClaudeCliConfig, CommandSpec, ContentBlock, GenerateError,
+    GenerateRequest, GenerateResponse, StopReason, TokenUsage,
+};
 use serde::Deserialize;
 use std::process::{Command, Stdio};
 
-use crate::command::CommandSpec;
-use crate::config::{AgentConfig, AgentMode};
-use crate::message::{GenerateRequest, GenerateResponse, Role};
-use crate::provider::{GenerateError, Provider};
-
-/// Claude-specific provider configuration.
-/// Parsed from AgentConfig.provider_config.
-#[derive(Debug, Clone, Default, Deserialize)]
-pub struct ClaudeProviderConfig {
-    /// Path to an MCP config JSON file to pass via --mcp-config.
-    #[serde(default)]
-    pub mcp_config_path: Option<String>,
-    /// Permission mode (e.g. "auto", "plan", "bypassPermissions").
-    #[serde(default)]
-    pub permission_mode: Option<String>,
-    /// Allowed tools list.
-    #[serde(default)]
-    pub allowed_tools: Vec<String>,
-}
+use crate::provider::Provider;
 
 /// Provider for Claude Code CLI.
 pub struct ClaudeProvider;
@@ -36,10 +21,10 @@ impl Provider for ClaudeProvider {
             .messages
             .iter()
             .rev()
-            .find(|m| matches!(m.role, Role::User))
+            .find(|m| matches!(m.role, orchestrator_types::Role::User))
             .map(|m| match &m.content {
-                orchestrator_core::MessageContent::Text(t) => t.clone(),
-                orchestrator_core::MessageContent::Blocks(blocks) => blocks
+                orchestrator_types::MessageContent::Text(t) => t.clone(),
+                orchestrator_types::MessageContent::Blocks(blocks) => blocks
                     .iter()
                     .filter_map(|b| match b {
                         ContentBlock::Text { text } => Some(text.as_str()),
@@ -103,36 +88,25 @@ impl Provider for ClaudeProvider {
             return None;
         }
 
-        let mut args = Vec::new();
-
-        // Parse provider-specific config
-        let claude_config: ClaudeProviderConfig =
+        // Parse ClaudeCliConfig from provider_config
+        let cli_config: ClaudeCliConfig =
             serde_json::from_value(config.provider_config.clone()).unwrap_or_default();
 
-        if let Some(ref mcp_path) = claude_config.mcp_config_path {
-            args.push("--mcp-config".into());
-            args.push(mcp_path.clone());
+        let mut args = cli_config.to_args();
+
+        // If system_prompt is set on AgentConfig but not on ClaudeCliConfig, use it
+        if cli_config.system_prompt.is_none() {
+            if let Some(ref prompt) = config.system_prompt {
+                args.extend(["--system-prompt".into(), prompt.clone()]);
+            }
         }
 
-        if let Some(ref prompt) = config.system_prompt {
-            args.push("--system-prompt".into());
-            args.push(prompt.clone());
-        }
-
-        if let Some(ref perm) = claude_config.permission_mode {
-            args.push("--permission-mode".into());
-            args.push(perm.clone());
-        }
-
-        for tool in &claude_config.allowed_tools {
-            args.push("--allowedTools".into());
-            args.push(tool.clone());
-        }
+        let env = cli_config.env;
 
         Some(CommandSpec {
             program: "claude".into(),
             args,
-            env: vec![],
+            env,
         })
     }
 }
@@ -179,22 +153,15 @@ struct CliUsage {
 }
 
 fn parse_cli_entries(entries: &[CliEntry]) -> Result<GenerateResponse, GenerateError> {
-    // Find session_id from system init entry
     let session_id = entries
         .iter()
         .find(|e| e.entry_type == "system")
         .and_then(|e| e.session_id.clone());
 
-    // Find the last assistant entry for content blocks and model
-    let assistant = entries
-        .iter()
-        .rev()
-        .find(|e| e.entry_type == "assistant");
+    let assistant = entries.iter().rev().find(|e| e.entry_type == "assistant");
 
-    // Find the result entry for stop_reason and aggregated usage
     let result = entries.iter().find(|e| e.entry_type == "result");
 
-    // Check for error
     if let Some(r) = result {
         if r.is_error == Some(true) {
             return Err(GenerateError::Api {
@@ -204,7 +171,6 @@ fn parse_cli_entries(entries: &[CliEntry]) -> Result<GenerateResponse, GenerateE
         }
     }
 
-    // Extract content blocks from assistant message
     let content = assistant
         .and_then(|a| a.message.as_ref())
         .and_then(|m| m.content.as_ref())
@@ -216,7 +182,6 @@ fn parse_cli_entries(entries: &[CliEntry]) -> Result<GenerateResponse, GenerateE
         })
         .unwrap_or_default();
 
-    // If no structured content but result exists, fallback to placeholder
     let content = if content.is_empty() {
         if result.is_some() {
             vec![ContentBlock::Text {
@@ -231,19 +196,16 @@ fn parse_cli_entries(entries: &[CliEntry]) -> Result<GenerateResponse, GenerateE
         content
     };
 
-    // Model from assistant message
     let model = assistant
         .and_then(|a| a.message.as_ref())
         .and_then(|m| m.model.clone())
         .unwrap_or_else(|| "claude".into());
 
-    // Stop reason from result entry
     let stop_reason = result
         .and_then(|r| r.stop_reason.as_deref())
         .map(parse_stop_reason)
         .unwrap_or(StopReason::EndTurn);
 
-    // Usage: prefer result entry (aggregated), fall back to assistant message usage
     let usage = result
         .and_then(|r| r.usage.as_ref())
         .or_else(|| {
@@ -305,6 +267,7 @@ fn parse_stop_reason(s: &str) -> StopReason {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use orchestrator_types::GenerateRequest;
 
     fn base_config() -> AgentConfig {
         AgentConfig {
@@ -341,6 +304,15 @@ mod tests {
     fn build_command_with_mcp_config() {
         let provider = ClaudeProvider;
         let mut config = base_config();
+        config.provider_config = serde_json::json!({"mcp_config": "/tmp/mcp.json"});
+        let spec = provider.build_command(&config).unwrap();
+        assert_eq!(spec.args, vec!["--mcp-config", "/tmp/mcp.json"]);
+    }
+
+    #[test]
+    fn build_command_with_mcp_config_legacy_field() {
+        let provider = ClaudeProvider;
+        let mut config = base_config();
         config.provider_config = serde_json::json!({"mcp_config_path": "/tmp/mcp.json"});
         let spec = provider.build_command(&config).unwrap();
         assert_eq!(spec.args, vec!["--mcp-config", "/tmp/mcp.json"]);
@@ -353,6 +325,28 @@ mod tests {
         config.provider_config = serde_json::json!({"permission_mode": "auto"});
         let spec = provider.build_command(&config).unwrap();
         assert_eq!(spec.args, vec!["--permission-mode", "auto"]);
+    }
+
+    #[test]
+    fn build_command_with_full_cli_config() {
+        let provider = ClaudeProvider;
+        let mut config = base_config();
+        config.provider_config = serde_json::json!({
+            "model": "opus",
+            "effort": "high",
+            "permission_mode": "auto",
+            "allowed_tools": ["Bash(git:*)"],
+            "mcp_config": "/tmp/mcp.json",
+            "bare": true
+        });
+        let spec = provider.build_command(&config).unwrap();
+        assert!(spec.args.contains(&"--model".to_string()));
+        assert!(spec.args.contains(&"opus".to_string()));
+        assert!(spec.args.contains(&"--effort".to_string()));
+        assert!(spec.args.contains(&"high".to_string()));
+        assert!(spec.args.contains(&"--permission-mode".to_string()));
+        assert!(spec.args.contains(&"--mcp-config".to_string()));
+        assert!(spec.args.contains(&"--bare".to_string()));
     }
 
     #[test]
@@ -440,13 +434,6 @@ mod tests {
         ]"#;
         let entries: Vec<CliEntry> = serde_json::from_str(json).unwrap();
         assert!(parse_cli_entries(&entries).is_err());
-    }
-
-    #[test]
-    fn parse_malformed_json_returns_error() {
-        let bad = b"this is not json";
-        let result: Result<Vec<CliEntry>, _> = serde_json::from_slice(bad);
-        assert!(result.is_err());
     }
 
     #[test]

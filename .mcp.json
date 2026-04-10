@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "orchestrator": {
+      "autoApprove": [
+        "list_agents",
+        "send_message",
+        "list_context",
+        "get_context"
+      ],
+      "type": "http",
+      "url": "http://127.0.0.1:7850"
+    }
+  }
+}

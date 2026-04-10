@@ -1,7 +1,8 @@
-use orchestrator_core::{Trace, Turn};
+use orchestrator_types::{
+    ClassificationResult, ClassifierConfig, ClassifierStatus, ClassifierTrigger, Trace, Turn,
+};
 
-use crate::config::ClassifierConfig;
-use crate::{ClassificationResult, Classifier, ClassifierStatus, ClassifierTrigger};
+use crate::Classifier;
 
 struct ClassifierEntry {
     classifier: Box<dyn Classifier>,
@@ -132,8 +133,10 @@ impl Default for ClassifierRegistry {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{ClassificationId, ClassifierTrigger, TriggerPhase, TurnFilter};
-    use orchestrator_core::{AgentId, TokenUsage, Trace, TraceId, TraceStatus};
+    use orchestrator_types::{
+        AgentId, ClassificationId, ClassifierTrigger, TokenUsage, Trace, TraceId, TraceStatus,
+        TriggerPhase, TurnFilter,
+    };
 
     struct MockClassifier {
         name: &'static str,

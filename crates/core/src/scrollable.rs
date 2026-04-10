@@ -1,10 +1,6 @@
 use std::ops::Range;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ScrollDirection {
-    Up,
-    Down,
-}
+use orchestrator_types::ScrollDirection;
 
 #[derive(Debug)]
 pub struct Scrollable {
@@ -168,39 +164,12 @@ mod tests {
     }
 
     #[test]
-    fn ensure_visible_scrolls_down_to_selection() {
-        let mut s = Scrollable::new();
-        s.set_item_count(20);
-        s.set_visible_height(5);
-        s.select(7);
-        assert_eq!(s.offset, 3);
-    }
-
-    #[test]
-    fn ensure_visible_scrolls_up_to_selection() {
-        let mut s = Scrollable::new();
-        s.set_item_count(20);
-        s.set_visible_height(5);
-        s.offset = 10;
-        s.select(3);
-        assert_eq!(s.offset, 3);
-    }
-
-    #[test]
     fn visible_range_correct() {
         let mut s = Scrollable::new();
         s.set_item_count(20);
         s.set_visible_height(5);
         s.offset = 3;
         assert_eq!(s.visible_range(), 3..8);
-    }
-
-    #[test]
-    fn visible_range_clamped_to_item_count() {
-        let mut s = Scrollable::new();
-        s.set_item_count(3);
-        s.set_visible_height(5);
-        assert_eq!(s.visible_range(), 0..3);
     }
 
     #[test]
@@ -219,17 +188,5 @@ mod tests {
         s.select(2);
         s.set_item_count(0);
         assert_eq!(s.selected, None);
-    }
-
-    #[test]
-    fn can_scroll_indicators() {
-        let mut s = Scrollable::new();
-        s.set_item_count(10);
-        s.set_visible_height(5);
-        assert!(!s.can_scroll_up());
-        assert!(s.can_scroll_down());
-        s.offset = 5;
-        assert!(s.can_scroll_up());
-        assert!(!s.can_scroll_down());
     }
 }

@@ -1,0 +1,6 @@
+{
+  "name": "default",
+  "description": "Standard Claude agent configuration",
+  "permission_mode": "auto",
+  "effort": "high"
+}

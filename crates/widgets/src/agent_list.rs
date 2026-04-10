@@ -108,6 +108,7 @@ mod tests {
                 focus: &focus,
                 file_tree: &file_tree,
                 render_term: &noop,
+                hidden_pages: &[],
             };
             $body
         }};

@@ -4,3 +4,7 @@ __pycache__
 .venv
 .ruff_cache
 *.pyc
+.agent-orchestrator/orchestrator.db
+.agent-orchestrator/orchestrator.db-journal
+.agent-orchestrator/orchestrator.db-wal
+.agent-orchestrator/orchestrator.db-shm

@@ -1,10 +1,7 @@
-use orchestrator_core::{
-    AssistantMeta, MessageContent, MessageType, TurnBuilder, TurnMeta, TurnRole, TurnStatus,
-    UserMeta,
+use orchestrator_types::{
+    AssistantMeta, GenerateResponse, Message, MessageContent, MessageType, Role, SessionId,
+    TurnBuilder, TurnMeta, TurnRole, TurnStatus, UserMeta,
 };
-
-use crate::message::{GenerateResponse, Message, Role};
-use crate::session::SessionId;
 
 /// Convert a user Message into a TurnBuilder for the core observation system.
 pub fn user_message_to_turn(
@@ -74,7 +71,7 @@ pub fn role_to_turn_role(role: Role) -> TurnRole {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use orchestrator_core::{ContentBlock, StopReason, TokenUsage};
+    use orchestrator_types::{ContentBlock, StopReason, TokenUsage};
 
     #[test]
     fn user_message_to_turn_produces_correct_fields() {

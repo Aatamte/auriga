@@ -22,6 +22,8 @@ pub struct SettingsField {
     pub value: String,
     pub description: &'static str,
     pub kind: FieldKind,
+    /// Detail lines shown in a right-side panel when this field is selected.
+    pub detail: Vec<(String, String)>,
 }
 
 pub struct SettingsPage {
@@ -152,6 +154,38 @@ impl SettingsPage {
         None
     }
 
+    fn render_detail(&self, frame: &mut Frame, area: Rect, field: &SettingsField) {
+        let block = Block::default()
+            .title(format!(" {} ", field.label))
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(Color::DarkGray));
+
+        let inner = block.inner(area);
+        frame.render_widget(block, area);
+
+        if inner.height == 0 || inner.width == 0 {
+            return;
+        }
+
+        let label_width = field.detail.iter().map(|(k, _)| k.len()).max().unwrap_or(0) + 2;
+
+        let mut lines: Vec<Line> = Vec::new();
+        lines.push(Line::from(""));
+        for (key, val) in &field.detail {
+            let display_val = if val.is_empty() { "-" } else { val.as_str() };
+            lines.push(Line::from(vec![
+                Span::styled(
+                    format!("  {:<width$}", key, width = label_width),
+                    Style::default().fg(Color::White),
+                ),
+                Span::styled(display_val, Style::default().fg(Color::Green)),
+            ]));
+        }
+
+        let paragraph = Paragraph::new(lines);
+        frame.render_widget(paragraph, inner);
+    }
+
     pub fn mark_saved(&mut self) {
         self.dirty = false;
         self.save_message = Some("Saved!");
@@ -166,16 +200,39 @@ impl Default for SettingsPage {
 
 impl Widget for SettingsPage {
     fn render(&mut self, frame: &mut Frame, area: Rect, _ctx: &RenderContext) {
+        // Check if selected field has detail content
+        let has_detail = self
+            .selected
+            .and_then(|i| self.fields.get(i))
+            .map(|f| !f.detail.is_empty())
+            .unwrap_or(false);
+
+        let (left_area, detail_area) = if has_detail && area.width > 60 {
+            let mid = area.width / 2;
+            let left = Rect::new(area.x, area.y, mid, area.height);
+            let right = Rect::new(area.x + mid, area.y, area.width - mid, area.height);
+            (left, Some(right))
+        } else {
+            (area, None)
+        };
+
         let block = Block::default()
             .title(" Settings ")
             .borders(Borders::ALL)
             .border_style(Style::default().fg(Color::DarkGray));
 
-        let inner = block.inner(area);
-        frame.render_widget(block, area);
+        let inner = block.inner(left_area);
+        frame.render_widget(block, left_area);
 
         if inner.height == 0 || inner.width == 0 {
             return;
+        }
+
+        // Render detail panel
+        if let Some(detail_rect) = detail_area {
+            if let Some(field) = self.selected.and_then(|i| self.fields.get(i)) {
+                self.render_detail(frame, detail_rect, field);
+            }
         }
 
         let mut lines: Vec<Line> = Vec::new();
@@ -352,6 +409,7 @@ mod tests {
             value: "7850".to_string(),
             description: "Port for MCP server",
             kind: FieldKind::Text,
+            detail: vec![],
         }]);
         page
     }
@@ -463,6 +521,7 @@ mod tests {
             value: "native".to_string(),
             description: "Display mode",
             kind: FieldKind::Toggle(vec!["native".into(), "orchestrator".into()]),
+            detail: vec![],
         }]);
         page
     }

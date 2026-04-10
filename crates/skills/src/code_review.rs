@@ -82,6 +82,9 @@ mod tests {
         let result = skill.execute(&test_ctx()).unwrap();
         assert_eq!(result.skill_name, "code-review");
         assert!(result.success);
-        assert!(result.payload["instructions"].as_str().unwrap().contains("Review the changes"));
+        assert!(result.payload["instructions"]
+            .as_str()
+            .unwrap()
+            .contains("Review the changes"));
     }
 }

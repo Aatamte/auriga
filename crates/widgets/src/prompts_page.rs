@@ -163,9 +163,15 @@ impl PromptsPage {
         // Context injection toggle — last item in System Prompts section
         let ctx_selected = self.selected == self.context_toggle_idx();
         let ctx_checkbox = if self.context_enabled { "[x]" } else { "[ ]" };
-        let ctx_check_color = if self.context_enabled { Color::Green } else { Color::DarkGray };
+        let ctx_check_color = if self.context_enabled {
+            Color::Green
+        } else {
+            Color::DarkGray
+        };
         let ctx_name_style = if ctx_selected {
-            Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD)
         } else {
             Style::default().fg(Color::White)
         };
@@ -417,11 +423,7 @@ fn render_system_prompt_owned(
     lines
 }
 
-fn render_skill_owned(
-    s: &SkillStatus,
-    is_selected: bool,
-    width: u16,
-) -> Vec<Line<'static>> {
+fn render_skill_owned(s: &SkillStatus, is_selected: bool, width: u16) -> Vec<Line<'static>> {
     let mut lines = Vec::new();
 
     let checkbox = if s.enabled { "[x]" } else { "[ ]" };
@@ -609,9 +611,7 @@ mod tests {
         page.handle_key(make_key(KeyCode::Down));
         page.handle_key(make_key(KeyCode::Down));
         let action = page.handle_key(make_key(KeyCode::Enter));
-        assert!(
-            matches!(action, Some(WidgetAction::ToggleSkill(name)) if name == "file-search")
-        );
+        assert!(matches!(action, Some(WidgetAction::ToggleSkill(name)) if name == "file-search"));
     }
 
     #[test]
@@ -643,8 +643,14 @@ mod tests {
     #[test]
     fn trigger_display_values() {
         assert_eq!(trigger_display(&SkillTrigger::OnDemand).0, "on-demand");
-        assert_eq!(trigger_display(&SkillTrigger::OnSessionStart).0, "session-start");
-        assert_eq!(trigger_display(&SkillTrigger::OnSessionEnd).0, "session-end");
+        assert_eq!(
+            trigger_display(&SkillTrigger::OnSessionStart).0,
+            "session-start"
+        );
+        assert_eq!(
+            trigger_display(&SkillTrigger::OnSessionEnd).0,
+            "session-end"
+        );
     }
 
     #[test]

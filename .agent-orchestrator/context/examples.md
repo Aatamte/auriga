@@ -1,5 +1,7 @@
 ---
-last_verified: 2026-04-06
+name: examples
+description: Canonical implementation examples. How to add pages, widgets, providers, skills, classifiers.
+last_updated: 2026-04-06
 ---
 
 # Canonical Examples

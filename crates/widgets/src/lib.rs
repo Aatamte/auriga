@@ -7,17 +7,17 @@ mod database_page;
 mod doctor_page;
 mod file_tree_widget;
 pub mod nav_bar;
+pub mod prompts_page;
 mod recent_activity;
 mod settings_page;
-pub mod prompts_page;
 
 pub use agent_list::AgentListWidget;
 pub use agent_pane::AgentPaneWidget;
 pub use classifier_panel::ClassifierPanelWidget;
-pub use context_page::{AnnotationView, ContextMapView, ContextPage, DeepContextView};
 pub use classifiers_page::{
     ClassifierDetailView, ClassifierStatusView, ClassifiersPage, LabelView,
 };
+pub use context_page::{AnnotationView, ContextMapView, ContextPage, DeepContextView};
 pub use database_page::{
     DatabasePage, DbMetadata as DbMetadataView, QueryResult as QueryResultView,
     TableInfo as TableInfoView,
@@ -26,9 +26,9 @@ pub use doctor_page::DoctorPage;
 pub use file_tree_widget::FileTreeWidget;
 pub use nav_bar::NavBarWidget;
 pub use orchestrator_grid::WidgetId;
+pub use prompts_page::{PromptsPage, SystemPromptEntry};
 pub use recent_activity::RecentActivityWidget;
 pub use settings_page::{FieldKind, SettingsField, SettingsPage};
-pub use prompts_page::{PromptsPage, SystemPromptEntry};
 
 use orchestrator_core::{
     AgentId, AgentStore, FileTree, FocusState, Page, ScrollDirection, TraceStore, TurnStore,
@@ -45,6 +45,8 @@ pub struct RenderContext<'a> {
     pub file_tree: &'a FileTree,
     /// Render an agent's terminal directly into a buffer at the given rect.
     pub render_term: &'a dyn Fn(AgentId, &mut ratatui::buffer::Buffer, Rect),
+    /// Pages to hide from the nav bar.
+    pub hidden_pages: &'a [Page],
 }
 
 /// Format a token count compactly: 500, 1.0K, 45.5K, 1.2M

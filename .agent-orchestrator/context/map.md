@@ -1,5 +1,7 @@
 ---
-last_verified: 2026-04-06
+name: map
+description: Project architecture map. Modules, dependencies, entry points.
+last_updated: 2026-04-06
 ---
 
 # Agent Orchestrator

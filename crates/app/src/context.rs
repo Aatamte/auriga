@@ -10,7 +10,8 @@ use std::path::{Path, PathBuf};
 #[derive(Debug, Clone, Default)]
 pub struct ContextMap {
     pub content: String,
-    pub last_verified: Option<String>,
+    pub description: Option<String>,
+    pub last_updated: Option<String>,
 }
 
 /// Layer 1 — per-file annotation.
@@ -27,9 +28,10 @@ pub struct FileAnnotation {
 #[derive(Debug, Clone)]
 pub struct DeepContext {
     pub name: String,
+    pub description: Option<String>,
     pub path: PathBuf,
     pub content: String,
-    pub last_verified: Option<String>,
+    pub last_updated: Option<String>,
 }
 
 /// Everything loaded from .agent-orchestrator/context/.
@@ -114,10 +116,12 @@ fn load_map(dir: &Path) -> ContextMap {
         return ContextMap::default();
     };
     let (frontmatter, body) = split_frontmatter(&raw);
-    let last_verified = extract_field(&frontmatter, "last_verified");
+    let description = extract_field(&frontmatter, "description");
+    let last_updated = extract_field(&frontmatter, "last_updated");
     ContextMap {
         content: body.trim().to_string(),
-        last_verified,
+        description,
+        last_updated,
     }
 }
 
@@ -166,22 +170,25 @@ fn load_md_files(dir: &Path, docs: &mut Vec<DeepContext>) {
             continue;
         };
         let (frontmatter, body) = split_frontmatter(&raw);
-        let last_verified = extract_field(&frontmatter, "last_verified");
+        let description = extract_field(&frontmatter, "description");
+        let last_updated = extract_field(&frontmatter, "last_updated");
 
-        // Derive name from path relative to context dir
+        // Use frontmatter name if present, otherwise derive from path
         let context_dir = crate::config::dir_path().join("context");
-        let name = path
+        let derived_name = path
             .strip_prefix(&context_dir)
             .unwrap_or(&path)
             .to_string_lossy()
             .trim_end_matches(".md")
             .to_string();
+        let name = extract_field(&frontmatter, "name").unwrap_or(derived_name);
 
         docs.push(DeepContext {
             name,
+            description,
             path,
             content: body.trim().to_string(),
-            last_verified,
+            last_updated,
         });
     }
 }
@@ -322,9 +329,9 @@ mod tests {
 
     #[test]
     fn split_frontmatter_with_fences() {
-        let raw = "---\nlast_verified: 2026-04-06\n---\n\n# Title\nBody here.";
+        let raw = "---\nlast_updated: 2026-04-06\n---\n\n# Title\nBody here.";
         let (fm, body) = split_frontmatter(raw);
-        assert_eq!(fm, "last_verified: 2026-04-06");
+        assert_eq!(fm, "last_updated: 2026-04-06");
         assert!(body.contains("# Title"));
         assert!(body.contains("Body here."));
     }
@@ -339,8 +346,8 @@ mod tests {
 
     #[test]
     fn extract_field_found() {
-        let fm = "last_verified: 2026-04-06\nauthor: test";
-        assert_eq!(extract_field(fm, "last_verified"), Some("2026-04-06".into()));
+        let fm = "last_updated: 2026-04-06\nauthor: test";
+        assert_eq!(extract_field(fm, "last_updated"), Some("2026-04-06".into()));
         assert_eq!(extract_field(fm, "author"), Some("test".into()));
     }
 

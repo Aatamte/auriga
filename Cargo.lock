@@ -1682,6 +1682,7 @@ name = "orchestrator-agent"
 version = "0.1.0"
 dependencies = [
  "orchestrator-core",
+ "orchestrator-types",
  "serde",
  "serde_json",
  "uuid",
@@ -1735,6 +1736,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "orchestrator-core",
+ "orchestrator-types",
  "serde",
  "serde_json",
  "tempfile",
@@ -1766,6 +1768,7 @@ dependencies = [
 name = "orchestrator-core"
 version = "0.1.0"
 dependencies = [
+ "orchestrator-types",
  "serde",
  "serde_json",
  "uuid",
@@ -1826,6 +1829,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "orchestrator-core",
+ "orchestrator-types",
  "serde",
  "serde_json",
  "uuid",
@@ -1851,6 +1855,15 @@ version = "0.1.0"
 dependencies = [
  "alacritty_terminal",
  "ratatui",
+]
+
+[[package]]
+name = "orchestrator-types"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "uuid",
 ]
 
 [[package]]

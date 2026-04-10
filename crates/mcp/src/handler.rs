@@ -5,6 +5,8 @@ use std::sync::mpsc;
 
 const TOOL_LIST_AGENTS: &str = "list_agents";
 const TOOL_SEND_MESSAGE: &str = "send_message";
+const TOOL_LIST_CONTEXT: &str = "list_context";
+const TOOL_GET_CONTEXT: &str = "get_context";
 
 /// Handle an MCP JSON-RPC request and return a response.
 /// For tool calls, sends an McpEvent to the main loop and blocks for the response.
@@ -34,7 +36,7 @@ fn handle_initialize(req: &Request) -> Response {
                 "name": "orchestrator",
                 "version": "0.1.0"
             },
-            "instructions": "You are one of several AI agents running inside an orchestrator TUI. The orchestrator manages multiple agents working in the same project. Your agent name is in the ORCHESTRATOR_AGENT_NAME environment variable — use it when sending messages so other agents know who you are. Use list_agents to discover other agents (it returns each agent's UUID, name, and status). Use send_message to communicate with them. Coordinate with other agents to avoid duplicate work and share findings."
+            "instructions": "You are one of several AI agents running inside an orchestrator TUI. The orchestrator manages multiple agents working in the same project. Your agent name is in the ORCHESTRATOR_AGENT_NAME environment variable — use it when sending messages so other agents know who you are. Use list_agents to discover other agents (it returns each agent's UUID, name, and status). Use send_message to communicate with them. Coordinate with other agents to avoid duplicate work and share findings. Use list_context to discover repository context documents that describe the codebase architecture, conventions, and patterns. Use get_context to read a specific document by name."
         }),
     )
 }
@@ -73,6 +75,29 @@ fn handle_tools_list(req: &Request) -> Response {
                             }
                         },
                         "required": ["from_agent_name", "to_agent_name", "message"]
+                    }
+                },
+                {
+                    "name": TOOL_LIST_CONTEXT,
+                    "description": "List repository context documents that describe this codebase — its architecture, design principles, coding conventions, and canonical examples. Call this when you need to understand the project structure, find the correct patterns to follow, or orient yourself in an unfamiliar area.",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {},
+                        "required": []
+                    }
+                },
+                {
+                    "name": TOOL_GET_CONTEXT,
+                    "description": "Retrieve the full content of a repository context document by name. Use list_context first to see available documents and their descriptions.",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "name": {
+                                "type": "string",
+                                "description": "The document name from list_context (e.g. 'map', 'principles', 'examples')."
+                            }
+                        },
+                        "required": ["name"]
                     }
                 }
             ]
@@ -115,6 +140,14 @@ fn handle_tools_call(req: &Request, event_tx: &mpsc::Sender<McpEvent>) -> Respon
                 message,
             }
         }
+        TOOL_LIST_CONTEXT => McpRequest::ListContext,
+        TOOL_GET_CONTEXT => {
+            let name = match arguments.get("name").and_then(|v| v.as_str()) {
+                Some(n) => n.to_string(),
+                None => return tool_error(req, "Missing required parameter: name"),
+            };
+            McpRequest::GetContext { name }
+        }
         _ => {
             return tool_error(req, &format!("Unknown tool: {}", tool_name));
         }
@@ -137,6 +170,11 @@ fn handle_tools_call(req: &Request, event_tx: &mpsc::Sender<McpEvent>) -> Respon
             tool_success(req, &text)
         }
         Ok(McpResponse::MessageSent) => tool_success(req, "Message delivered to agent."),
+        Ok(McpResponse::ContextList(docs)) => {
+            let text = serde_json::to_string_pretty(&docs).unwrap_or_default();
+            tool_success(req, &text)
+        }
+        Ok(McpResponse::ContextDoc(content)) => tool_success(req, &content),
         Ok(McpResponse::Error(msg)) => tool_error(req, &msg),
         Err(_) => tool_error(req, "Failed to get response from orchestrator"),
     }
@@ -202,15 +240,17 @@ mod tests {
     }
 
     #[test]
-    fn tools_list_returns_two_tools() {
+    fn tools_list_returns_four_tools() {
         let (tx, _rx) = mpsc::channel();
         let req = make_request("tools/list", json!({}));
         let resp = handle_request(&req, &tx).unwrap();
         let tools = resp.result.unwrap()["tools"].as_array().unwrap().clone();
-        assert_eq!(tools.len(), 2);
+        assert_eq!(tools.len(), 4);
         let names: Vec<&str> = tools.iter().map(|t| t["name"].as_str().unwrap()).collect();
         assert!(names.contains(&"list_agents"));
         assert!(names.contains(&"send_message"));
+        assert!(names.contains(&"list_context"));
+        assert!(names.contains(&"get_context"));
     }
 
     #[test]
@@ -303,6 +343,83 @@ mod tests {
         let resp = handle.join().unwrap().unwrap();
         let result = resp.result.unwrap();
         assert!(!result["isError"].as_bool().unwrap());
+    }
+
+    #[test]
+    fn tools_call_list_context_sends_event() {
+        let (tx, rx) = mpsc::channel();
+        let req = make_request(
+            "tools/call",
+            json!({"name": "list_context", "arguments": {}}),
+        );
+
+        let handle = std::thread::spawn(move || handle_request(&req, &tx));
+
+        let event = rx.recv().unwrap();
+        assert!(matches!(event.request, McpRequest::ListContext));
+        event
+            .response_tx
+            .send(McpResponse::ContextList(vec![crate::ContextDocInfo {
+                name: "map".to_string(),
+                description: "Project architecture map.".to_string(),
+                last_updated: Some("2026-04-06".to_string()),
+            }]))
+            .unwrap();
+
+        let resp = handle.join().unwrap().unwrap();
+        let text = resp.result.unwrap()["content"][0]["text"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        assert!(text.contains("map"));
+        assert!(text.contains("Project architecture map."));
+    }
+
+    #[test]
+    fn tools_call_get_context_sends_event() {
+        let (tx, rx) = mpsc::channel();
+        let req = make_request(
+            "tools/call",
+            json!({"name": "get_context", "arguments": {"name": "principles"}}),
+        );
+
+        let handle = std::thread::spawn(move || handle_request(&req, &tx));
+
+        let event = rx.recv().unwrap();
+        match &event.request {
+            McpRequest::GetContext { name } => assert_eq!(name, "principles"),
+            _ => panic!("expected GetContext"),
+        }
+        event
+            .response_tx
+            .send(McpResponse::ContextDoc(
+                "# Design Principles\nContent here.".to_string(),
+            ))
+            .unwrap();
+
+        let resp = handle.join().unwrap().unwrap();
+        let result = resp.result.unwrap();
+        assert!(!result["isError"].as_bool().unwrap());
+        assert!(result["content"][0]["text"]
+            .as_str()
+            .unwrap()
+            .contains("Design Principles"));
+    }
+
+    #[test]
+    fn get_context_requires_name() {
+        let (tx, _rx) = mpsc::channel();
+        let req = make_request(
+            "tools/call",
+            json!({"name": "get_context", "arguments": {}}),
+        );
+        let resp = handle_request(&req, &tx).unwrap();
+        let result = resp.result.unwrap();
+        assert!(result["isError"].as_bool().unwrap());
+        assert!(result["content"][0]["text"]
+            .as_str()
+            .unwrap()
+            .contains("name"));
     }
 
     #[test]

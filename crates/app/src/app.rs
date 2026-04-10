@@ -19,7 +19,7 @@ use orchestrator_core::{
 };
 use orchestrator_grid::{CellRect, Grid};
 use orchestrator_mcp::doctor::{DoctorMcpServer, DoctorRequest, DoctorResponse};
-use orchestrator_mcp::{AgentInfo, McpEvent, McpRequest, McpResponse};
+use orchestrator_mcp::{AgentInfo, ContextDocInfo, McpEvent, McpRequest, McpResponse};
 use orchestrator_ml::MlRuntime;
 use orchestrator_pty::PtyHandle;
 use orchestrator_skills::SkillRegistry;
@@ -34,6 +34,17 @@ use std::path::PathBuf;
 
 /// When false, always use the built-in default layout instead of reading from config.json.
 const USE_FS_LAYOUT: bool = false;
+/// When false, skip loading, running, and displaying classifiers entirely.
+pub const USE_CLASSIFIERS: bool = false;
+
+/// Pages hidden based on feature flags.
+pub fn hidden_pages() -> Vec<orchestrator_core::Page> {
+    let mut pages = Vec::new();
+    if !USE_CLASSIFIERS {
+        pages.push(orchestrator_core::Page::Classifiers);
+    }
+    pages
+}
 use std::sync::mpsc;
 
 pub struct App {
@@ -71,6 +82,7 @@ pub struct App {
     pub generate_rx: mpsc::Receiver<(AgentId, Result<GenerateResponse, String>)>,
     pub running: bool,
     pub context_injection: bool,
+    pub context_store: crate::context::ContextStore,
 }
 
 impl App {
@@ -136,6 +148,7 @@ impl App {
             generate_rx,
             running: true,
             context_injection: true,
+            context_store: crate::context::load(),
         }
     }
 
@@ -148,7 +161,7 @@ impl App {
     /// Load classifier configs from `.agent-orchestrator/classifiers/` and register them.
     pub fn load_classifier_configs(&mut self) {
         let classifiers_dir = crate::config::dir_path().join("classifiers");
-        let configs = orchestrator_classifier::config::load_configs(&classifiers_dir);
+        let configs = orchestrator_classifier::load_configs(&classifiers_dir);
         for (_path, config) in configs {
             // Skip if already registered (avoids duplicates on reload)
             if self
@@ -221,15 +234,15 @@ impl App {
             .map(|p| p.content.as_str())
             .unwrap_or("");
 
-        let mut builder = SystemPromptBuilder::new()
-            .section(prompt_content);
+        let mut builder = SystemPromptBuilder::new().section(prompt_content);
 
         if self.context_injection {
-            let map_content = crate::context::load_map_content();
-            builder = builder.titled_section("Repository Context", &map_content);
+            builder = builder.titled_section("Repository Context", &self.context_store.map.content);
         }
 
         let system_prompt = builder.build();
+
+        let provider_config = crate::config::load_active_provider_config();
 
         AgentConfig {
             name: "agent".into(),
@@ -239,7 +252,7 @@ impl App {
             system_prompt,
             temperature: None,
             mode: AgentMode::NativeCli,
-            provider_config: serde_json::json!({}),
+            provider_config,
         }
     }
 
@@ -354,18 +367,22 @@ impl App {
                     .filter(|t| t.session_id.as_deref() == Some(&trace.session_id))
                     .cloned()
                     .collect();
-                let results = self.classifier_registry.run_on_complete(&trace, &turns);
-                for result in &results {
-                    if let Some(ref notif) = result.notification {
-                        let xml = notif
-                            .format_xml(&result.classifier_name, &result.trace_id.0.to_string());
-                        if let Some(pty) = self.ptys.get_mut(&agent_id) {
-                            let _ = pty.write_input(xml.as_bytes());
+                if USE_CLASSIFIERS {
+                    let results = self.classifier_registry.run_on_complete(&trace, &turns);
+                    for result in &results {
+                        if let Some(ref notif) = result.notification {
+                            let xml = notif.format_xml(
+                                &result.classifier_name,
+                                &result.trace_id.0.to_string(),
+                            );
+                            if let Some(pty) = self.ptys.get_mut(&agent_id) {
+                                let _ = pty.write_input(xml.as_bytes());
+                            }
                         }
                     }
-                }
-                for result in results {
-                    self.storage.save_classification(result);
+                    for result in results {
+                        self.storage.save_classification(result);
+                    }
                 }
                 self.storage.save_trace(trace, turns);
             }
@@ -391,9 +408,11 @@ impl App {
                 .filter(|t| t.session_id.as_deref() == Some(&trace.session_id))
                 .cloned()
                 .collect();
-            let results = self.classifier_registry.run_on_complete(&trace, &turns);
-            for result in results {
-                self.storage.save_classification(result);
+            if USE_CLASSIFIERS {
+                let results = self.classifier_registry.run_on_complete(&trace, &turns);
+                for result in results {
+                    self.storage.save_classification(result);
+                }
             }
             self.storage.save_trace(trace, turns);
         }
@@ -557,22 +576,24 @@ impl App {
                             .filter(|t| t.session_id.as_deref() == Some(&entry.session_id))
                             .cloned()
                             .collect();
-                        let results = self
-                            .classifier_registry
-                            .run_incremental(&trace_clone, &turns);
-                        for result in &results {
-                            if let Some(ref notif) = result.notification {
-                                let xml = notif.format_xml(
-                                    &result.classifier_name,
-                                    &result.trace_id.0.to_string(),
-                                );
-                                if let Some(pty) = self.ptys.get_mut(&agent_id) {
-                                    let _ = pty.write_input(xml.as_bytes());
+                        if USE_CLASSIFIERS {
+                            let results = self
+                                .classifier_registry
+                                .run_incremental(&trace_clone, &turns);
+                            for result in &results {
+                                if let Some(ref notif) = result.notification {
+                                    let xml = notif.format_xml(
+                                        &result.classifier_name,
+                                        &result.trace_id.0.to_string(),
+                                    );
+                                    if let Some(pty) = self.ptys.get_mut(&agent_id) {
+                                        let _ = pty.write_input(xml.as_bytes());
+                                    }
                                 }
                             }
-                        }
-                        for result in results {
-                            self.storage.save_classification(result);
+                            for result in results {
+                                self.storage.save_classification(result);
+                            }
                         }
                         self.storage.save_trace(trace_clone, turns);
                     }
@@ -629,6 +650,55 @@ impl App {
                             }
                         }
                         None => McpResponse::Error(format!("No agent named '{}'", to_agent_name)),
+                    };
+                    if event.response_tx.send(resp).is_err() {
+                        tracing::warn!("MCP response channel closed");
+                    }
+                }
+                McpRequest::ListContext => {
+                    let mut docs: Vec<ContextDocInfo> = Vec::new();
+                    if !self.context_store.map.content.is_empty() {
+                        docs.push(ContextDocInfo {
+                            name: "map".to_string(),
+                            description: self
+                                .context_store
+                                .map
+                                .description
+                                .clone()
+                                .unwrap_or_default(),
+                            last_updated: self.context_store.map.last_updated.clone(),
+                        });
+                    }
+                    for dc in &self.context_store.deep_contexts {
+                        docs.push(ContextDocInfo {
+                            name: dc.name.clone(),
+                            description: dc.description.clone().unwrap_or_default(),
+                            last_updated: dc.last_updated.clone(),
+                        });
+                    }
+                    if event
+                        .response_tx
+                        .send(McpResponse::ContextList(docs))
+                        .is_err()
+                    {
+                        tracing::warn!("MCP response channel closed");
+                    }
+                }
+                McpRequest::GetContext { name } => {
+                    let resp = if name == "map" {
+                        if self.context_store.map.content.is_empty() {
+                            McpResponse::Error(format!("No context document named '{}'", name))
+                        } else {
+                            McpResponse::ContextDoc(self.context_store.map.content.clone())
+                        }
+                    } else {
+                        match self.context_store.deep_contexts.iter().find(|d| d.name == name) {
+                            Some(dc) => McpResponse::ContextDoc(dc.content.clone()),
+                            None => McpResponse::Error(format!(
+                                "No context document named '{}'. Use list_context to see available documents.",
+                                name
+                            )),
+                        }
                     };
                     if event.response_tx.send(resp).is_err() {
                         tracing::warn!("MCP response channel closed");
@@ -1045,19 +1115,20 @@ impl App {
     }
 
     pub fn refresh_context(&mut self) {
-        let store = crate::context::load();
+        self.context_store = crate::context::load();
 
-        let map_view = if store.map.content.is_empty() {
+        let map_view = if self.context_store.map.content.is_empty() {
             None
         } else {
             Some(orchestrator_widgets::ContextMapView {
-                content: store.map.content,
-                last_verified: store.map.last_verified,
+                content: self.context_store.map.content.clone(),
+                last_updated: self.context_store.map.last_updated.clone(),
             })
         };
         self.widgets.context_page.set_map(map_view);
 
-        let annotations: Vec<orchestrator_widgets::AnnotationView> = store
+        let annotations: Vec<orchestrator_widgets::AnnotationView> = self
+            .context_store
             .annotations
             .iter()
             .map(|(path, ann)| orchestrator_widgets::AnnotationView {
@@ -1067,12 +1138,14 @@ impl App {
             .collect();
         self.widgets.context_page.set_annotations(annotations);
 
-        let deep: Vec<orchestrator_widgets::DeepContextView> = store
+        let deep: Vec<orchestrator_widgets::DeepContextView> = self
+            .context_store
             .deep_contexts
             .iter()
             .map(|d| orchestrator_widgets::DeepContextView {
                 name: d.name.clone(),
-                last_verified: d.last_verified.clone(),
+                description: d.description.clone(),
+                last_updated: d.last_updated.clone(),
             })
             .collect();
         self.widgets.context_page.set_deep_contexts(deep);
@@ -1093,7 +1166,10 @@ impl App {
         let path = prompts_dir.join(format!("{}.json", name));
         if let Ok(contents) = std::fs::read_to_string(&path) {
             if let Ok(mut value) = serde_json::from_str::<serde_json::Value>(&contents) {
-                let currently = value.get("enabled").and_then(|v| v.as_bool()).unwrap_or(true);
+                let currently = value
+                    .get("enabled")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(true);
                 value["enabled"] = serde_json::Value::Bool(!currently);
                 if let Ok(json) = serde_json::to_string_pretty(&value) {
                     let _ = std::fs::write(&path, json);
@@ -1175,6 +1251,7 @@ fn config_to_fields(config: &crate::config::Config) -> Vec<SettingsField> {
             value: config.mcp_port.to_string(),
             description: "Port for the MCP JSON-RPC server",
             kind: FieldKind::Text,
+            detail: vec![],
         },
         SettingsField {
             label: "Default Provider",
@@ -1182,6 +1259,7 @@ fn config_to_fields(config: &crate::config::Config) -> Vec<SettingsField> {
             value: config.default_provider.clone(),
             description: "Provider for new agents (ctrl+n)",
             kind: FieldKind::Toggle(vec!["claude".into()]),
+            detail: vec![],
         },
         SettingsField {
             label: "Claude",
@@ -1189,6 +1267,7 @@ fn config_to_fields(config: &crate::config::Config) -> Vec<SettingsField> {
             value: config.claude_enabled.to_string(),
             description: "Enable Claude provider",
             kind: FieldKind::Toggle(vec!["true".into(), "false".into()]),
+            detail: vec![],
         },
         SettingsField {
             label: "Display Mode",
@@ -1196,6 +1275,7 @@ fn config_to_fields(config: &crate::config::Config) -> Vec<SettingsField> {
             value: config.display_mode.clone(),
             description: "native = our TUI, provider = provider's own TUI",
             kind: FieldKind::Toggle(vec!["native".into(), "provider".into()]),
+            detail: vec![],
         },
         SettingsField {
             label: "Font Size",
@@ -1203,8 +1283,198 @@ fn config_to_fields(config: &crate::config::Config) -> Vec<SettingsField> {
             value: config.font_size.to_string(),
             description: "Global font size (8-32)",
             kind: FieldKind::Text,
+            detail: vec![],
+        },
+        {
+            let presets = crate::config::load_presets();
+            let options: Vec<String> = presets.iter().map(|p| p.name.clone()).collect();
+            let current = config.active_preset.clone();
+            let detail = preset_detail(&presets, &current);
+            SettingsField {
+                label: "Claude Preset",
+                key: "active_preset",
+                value: current,
+                description: "Active CLI preset for new Claude agents",
+                kind: FieldKind::Toggle(options),
+                detail,
+            }
         },
     ]
+}
+
+fn preset_detail(
+    presets: &[orchestrator_core::ClaudePreset],
+    active_name: &str,
+) -> Vec<(String, String)> {
+    let Some(preset) = presets.iter().find(|p| p.name == active_name) else {
+        return vec![];
+    };
+    let c = &preset.config;
+
+    fn opt(v: &Option<String>) -> String {
+        v.as_deref().unwrap_or("-").to_string()
+    }
+    fn opt_fmt<T: std::fmt::Debug>(v: &Option<T>) -> String {
+        match v {
+            Some(val) => format!("{:?}", val).to_lowercase(),
+            None => "-".into(),
+        }
+    }
+    fn bool_str(v: bool) -> String {
+        if v { "true" } else { "false" }.into()
+    }
+    fn vec_str(v: &[String]) -> String {
+        if v.is_empty() {
+            "-".into()
+        } else {
+            v.join(", ")
+        }
+    }
+    fn env_str(v: &[(String, String)]) -> String {
+        if v.is_empty() {
+            "-".into()
+        } else {
+            v.iter()
+                .map(|(k, val)| format!("{}={}", k, val))
+                .collect::<Vec<_>>()
+                .join(", ")
+        }
+    }
+    fn budget_str(v: &Option<f64>) -> String {
+        match v {
+            Some(b) => format!("${:.2}", b),
+            None => "-".into(),
+        }
+    }
+
+    let mut detail = vec![
+        (
+            "Description".into(),
+            if preset.description.is_empty() {
+                "-".into()
+            } else {
+                preset.description.clone()
+            },
+        ),
+        // Session identity
+        ("Session Name".into(), opt(&c.name)),
+        ("Resume".into(), opt(&c.resume)),
+        ("Continue".into(), bool_str(c.continue_session)),
+        // Model & reasoning
+        ("Model".into(), opt(&c.model)),
+        ("Effort".into(), opt_fmt(&c.effort)),
+        // Permissions & safety
+        ("Permission Mode".into(), opt_fmt(&c.permission_mode)),
+        ("Allowed Tools".into(), vec_str(&c.allowed_tools)),
+        ("Disallowed Tools".into(), vec_str(&c.disallowed_tools)),
+        (
+            "Skip Permissions".into(),
+            bool_str(c.dangerously_skip_permissions),
+        ),
+        // Prompts & context
+        ("System Prompt".into(), opt(&c.system_prompt)),
+        ("Append Prompt".into(), opt(&c.append_system_prompt)),
+        ("Add Dirs".into(), vec_str(&c.add_dirs)),
+        // MCP
+        ("MCP Config".into(), opt(&c.mcp_config)),
+        ("Strict MCP".into(), bool_str(c.strict_mcp_config)),
+        // Output
+        ("Output Format".into(), opt_fmt(&c.output_format)),
+        ("Max Budget".into(), budget_str(&c.max_budget_usd)),
+        // Tools & agents
+        ("Tools".into(), vec_str(&c.tools)),
+        ("Agent".into(), opt(&c.agent)),
+        ("Agents JSON".into(), opt(&c.agents)),
+        // Worktree & environment
+        ("Worktree".into(), opt(&c.worktree)),
+        // Behavior flags
+        ("Bare".into(), bool_str(c.bare)),
+        ("Verbose".into(), bool_str(c.verbose)),
+        ("Disable Skills".into(), bool_str(c.disable_slash_commands)),
+        // Environment variables
+        ("Env Vars".into(), env_str(&c.env)),
+    ];
+
+    // Settings detail
+    if let Some(ref s) = c.settings {
+        detail.push(("".into(), "".into()));
+        detail.push(("--- Settings ---".into(), "".into()));
+
+        if let Some(ref perms) = s.permissions {
+            if !perms.allow.is_empty() {
+                detail.push(("Permissions Allow".into(), perms.allow.join(", ")));
+            }
+            if !perms.deny.is_empty() {
+                detail.push(("Permissions Deny".into(), perms.deny.join(", ")));
+            }
+            if !perms.ask.is_empty() {
+                detail.push(("Permissions Ask".into(), perms.ask.join(", ")));
+            }
+            if let Some(ref mode) = perms.default_mode {
+                detail.push(("Default Mode".into(), mode.clone()));
+            }
+            if let Some(ref dirs) = perms.additional_directories {
+                if !dirs.is_empty() {
+                    detail.push(("Additional Dirs".into(), dirs.join(", ")));
+                }
+            }
+        }
+        if let Some(ref model) = s.model {
+            detail.push(("Settings Model".into(), model.clone()));
+        }
+        if let Some(ref effort) = s.effort_level {
+            detail.push(("Settings Effort".into(), effort.clone()));
+        }
+        if let Some(v) = s.auto_memory_enabled {
+            detail.push(("Auto Memory".into(), bool_str(v)));
+        }
+        if let Some(v) = s.include_git_instructions {
+            detail.push(("Git Instructions".into(), bool_str(v)));
+        }
+        if let Some(v) = s.respect_gitignore {
+            detail.push(("Respect Gitignore".into(), bool_str(v)));
+        }
+        if let Some(ref lang) = s.language {
+            detail.push(("Language".into(), lang.clone()));
+        }
+        if let Some(ref style) = s.output_style {
+            detail.push(("Output Style".into(), style.clone()));
+        }
+        if let Some(v) = s.fast_mode {
+            detail.push(("Fast Mode".into(), bool_str(v)));
+        }
+        if let Some(v) = s.always_thinking_enabled {
+            detail.push(("Always Thinking".into(), bool_str(v)));
+        }
+        if let Some(v) = s.disable_all_hooks {
+            detail.push(("Disable Hooks".into(), bool_str(v)));
+        }
+        if let Some(v) = s.enable_all_project_mcp_servers {
+            detail.push(("Auto-approve MCP".into(), bool_str(v)));
+        }
+        if s.sandbox.is_some() {
+            detail.push(("Sandbox".into(), "configured".into()));
+        }
+        if s.hooks.is_some() {
+            detail.push(("Hooks".into(), "configured".into()));
+        }
+        if s.enabled_plugins.is_some() {
+            detail.push(("Plugins".into(), "configured".into()));
+        }
+        if let Some(ref attr) = s.attribution {
+            if let Some(ref c) = attr.commit {
+                detail.push(("Commit Attribution".into(), c.clone()));
+            }
+            if let Some(ref p) = attr.pr {
+                detail.push(("PR Attribution".into(), p.clone()));
+            }
+        }
+        if let Some(days) = s.cleanup_period_days {
+            detail.push(("Cleanup Days".into(), days.to_string()));
+        }
+    }
+
+    detail
 }
 
 fn fields_to_config(values: &[(&str, &str)]) -> crate::config::Config {
@@ -1229,6 +1499,9 @@ fn fields_to_config(values: &[(&str, &str)]) -> crate::config::Config {
                 if let Ok(size) = val.parse::<u16>() {
                     config.font_size = size.clamp(8, 32);
                 }
+            }
+            "active_preset" => {
+                config.active_preset = val.to_string();
             }
             _ => {}
         }

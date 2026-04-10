@@ -19,11 +19,17 @@ pub enum McpRequest {
         to_agent_name: String,
         message: String,
     },
+    ListContext,
+    GetContext {
+        name: String,
+    },
 }
 
 pub enum McpResponse {
     Agents(Vec<AgentInfo>),
     MessageSent,
+    ContextList(Vec<ContextDocInfo>),
+    ContextDoc(String),
     Error(String),
 }
 
@@ -32,6 +38,13 @@ pub struct AgentInfo {
     pub id: String,
     pub name: String,
     pub status: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ContextDocInfo {
+    pub name: String,
+    pub description: String,
+    pub last_updated: Option<String>,
 }
 
 /// Result of starting the MCP server.

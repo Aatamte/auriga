@@ -1,4 +1,4 @@
-use crate::agent::AgentId;
+use crate::AgentId;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Panel {
@@ -19,19 +19,10 @@ pub enum Page {
 
 impl Page {
     /// Primary pages — left group in the nav bar.
-    pub const LEFT: &[Page] = &[
-        Page::Home,
-        Page::Prompts,
-        Page::Context,
-        Page::Classifiers,
-    ];
+    pub const LEFT: &[Page] = &[Page::Home, Page::Prompts, Page::Context, Page::Classifiers];
 
     /// Utility pages — right group in the nav bar, after the spacer.
-    pub const RIGHT: &[Page] = &[
-        Page::Doctor,
-        Page::Database,
-        Page::Settings,
-    ];
+    pub const RIGHT: &[Page] = &[Page::Doctor, Page::Database, Page::Settings];
 
     /// All pages in display order.
     pub const ALL: &[Page] = &[
@@ -57,6 +48,7 @@ impl Page {
     }
 }
 
+/// Tracks which panel and page are focused, and which agent is active.
 #[derive(Debug)]
 pub struct FocusState {
     pub panel: Panel,

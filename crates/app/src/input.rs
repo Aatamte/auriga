@@ -100,7 +100,11 @@ pub fn handle_mouse(app: &mut App, mouse: MouseEvent) {
         // Check tab bar clicks
         let nav = app.last_nav_rect;
         if mouse.row >= nav.y && mouse.row < nav.y + nav.height {
-            if let Some(page) = app.widgets.nav_bar.handle_click(mouse.column, nav) {
+            if let Some(page) =
+                app.widgets
+                    .nav_bar
+                    .handle_click(mouse.column, nav, &crate::app::hidden_pages())
+            {
                 app.handle_widget_action(WidgetAction::NavigateTo(page));
             }
             return;
@@ -122,6 +126,7 @@ pub fn handle_mouse(app: &mut App, mouse: MouseEvent) {
                         orchestrator_terminal::render_term(term, buf, area);
                     }
                 };
+            let hidden = crate::app::hidden_pages();
             let ctx = RenderContext {
                 agents: &app.agents,
                 turns: &app.turns,
@@ -129,6 +134,7 @@ pub fn handle_mouse(app: &mut App, mouse: MouseEvent) {
                 focus: &app.focus,
                 file_tree: &app.file_tree,
                 render_term: &term_renderer,
+                hidden_pages: &hidden,
             };
             let widget = app.widgets.get_mut(widget_name);
             if let Some(action) = widget.handle_click(local_row, local_col, &ctx) {

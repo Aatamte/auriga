@@ -1,5 +1,5 @@
 use crate::jsonrpc::{Request, Response};
-use orchestrator_classifier::config::ClassifierConfig;
+use orchestrator_classifier::ClassifierConfig;
 use orchestrator_classifier::ClassifierStatus;
 use orchestrator_core::TraceId;
 use orchestrator_storage::Database;
@@ -463,7 +463,7 @@ fn handle_tools_call(
             }
 
             // Write the config file
-            if let Err(e) = orchestrator_classifier::config::save_config(&file_path, &config) {
+            if let Err(e) = orchestrator_classifier::save_config(&file_path, &config) {
                 return tool_error(req, &format!("Failed to write config: {}", e));
             }
 
@@ -923,7 +923,7 @@ mod tests {
         // Verify the file was written
         let file_path = dir.path().join("test-classifier.json");
         assert!(file_path.exists());
-        let loaded = orchestrator_classifier::config::load_config(&file_path).unwrap();
+        let loaded = orchestrator_classifier::load_config(&file_path).unwrap();
         assert_eq!(loaded.name, "test-classifier");
         assert_eq!(
             loaded.classifier_type,
@@ -941,20 +941,19 @@ mod tests {
         let dir_path = dir.path().to_path_buf();
 
         // Write an existing config
-        let existing = orchestrator_classifier::config::ClassifierConfig {
+        let existing = orchestrator_classifier::ClassifierConfig {
             name: "existing".into(),
             description: "Already here".into(),
             version: "1.0".into(),
             enabled: true,
-            trigger: orchestrator_classifier::config::ConfigTrigger::Simple(
+            trigger: orchestrator_classifier::ConfigTrigger::Simple(
                 orchestrator_classifier::TriggerPhase::OnComplete,
             ),
             classifier_type: orchestrator_classifier::ClassifierType::Ml,
             runtime: json!({}),
             labels: vec![],
         };
-        orchestrator_classifier::config::save_config(&dir.path().join("existing.json"), &existing)
-            .unwrap();
+        orchestrator_classifier::save_config(&dir.path().join("existing.json"), &existing).unwrap();
 
         let req = make_request(
             "tools/call",

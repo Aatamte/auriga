@@ -1,240 +1,4 @@
-use serde::{Deserialize, Serialize};
-
-use crate::AgentId;
-
-// ---------------------------------------------------------------------------
-// IDs
-// ---------------------------------------------------------------------------
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct TurnId(pub usize);
-
-// ---------------------------------------------------------------------------
-// Enums
-// ---------------------------------------------------------------------------
-
-/// Envelope-level message type.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum MessageType {
-    User,
-    Assistant,
-    System,
-}
-
-/// API-level conversation role.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum TurnRole {
-    User,
-    Assistant,
-}
-
-/// Why the model stopped generating.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum StopReason {
-    EndTurn,
-    ToolUse,
-    MaxTokens,
-    StopSequence,
-}
-
-/// Turn lifecycle status.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum TurnStatus {
-    Active,
-    Complete,
-}
-
-/// Image encoding kind.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum ImageSourceType {
-    Base64,
-}
-
-// ---------------------------------------------------------------------------
-// Content blocks
-// ---------------------------------------------------------------------------
-
-/// A single content block within a message.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub enum ContentBlock {
-    Text {
-        text: String,
-    },
-    Thinking {
-        thinking: String,
-        signature: Option<String>,
-    },
-    ToolUse {
-        id: String,
-        name: String,
-        input: serde_json::Value,
-    },
-    ToolResult {
-        tool_use_id: String,
-        content: ToolResultContent,
-        is_error: bool,
-    },
-    Image {
-        source: ImageSource,
-    },
-}
-
-/// Tool result content: plain text or nested content blocks.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub enum ToolResultContent {
-    Text(String),
-    Blocks(Vec<ContentBlock>),
-}
-
-/// Message body content: plain string or structured content blocks.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub enum MessageContent {
-    Text(String),
-    Blocks(Vec<ContentBlock>),
-}
-
-// ---------------------------------------------------------------------------
-// Value types
-// ---------------------------------------------------------------------------
-
-/// Token usage from a model response.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct TokenUsage {
-    pub input_tokens: u64,
-    pub output_tokens: u64,
-    pub cache_creation_input_tokens: Option<u64>,
-    pub cache_read_input_tokens: Option<u64>,
-}
-
-impl TokenUsage {
-    pub fn total(&self) -> u64 {
-        self.input_tokens + self.output_tokens
-    }
-}
-
-/// Embedded image source data.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ImageSource {
-    pub source_type: ImageSourceType,
-    pub media_type: String,
-    pub data: String,
-}
-
-// ---------------------------------------------------------------------------
-// Per-MessageType metadata
-// ---------------------------------------------------------------------------
-
-/// Assistant-specific metadata from the model response.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct AssistantMeta {
-    pub model: Option<String>,
-    pub stop_reason: Option<StopReason>,
-    pub stop_sequence: Option<String>,
-    pub usage: Option<TokenUsage>,
-    pub request_id: Option<String>,
-}
-
-/// User message metadata.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct UserMeta {
-    pub is_meta: bool,
-    pub is_compact_summary: bool,
-    pub source_tool_assistant_uuid: Option<String>,
-}
-
-/// System message metadata.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct SystemMeta {
-    pub subtype: Option<String>,
-    pub level: Option<String>,
-}
-
-/// Message-type-specific metadata.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub enum TurnMeta {
-    User(UserMeta),
-    Assistant(AssistantMeta),
-    System(SystemMeta),
-}
-
-// ---------------------------------------------------------------------------
-// Turn entity
-// ---------------------------------------------------------------------------
-
-/// A single conversation turn — one message in an agent's conversation history.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Turn {
-    // Internal identity (assigned by TurnStore)
-    pub id: TurnId,
-    pub agent_id: AgentId,
-    pub number: u32,
-    pub status: TurnStatus,
-
-    // External identity (from log)
-    pub uuid: String,
-    pub parent_uuid: Option<String>,
-    pub session_id: Option<String>,
-    pub timestamp: String,
-
-    // Envelope context
-    pub message_type: MessageType,
-    pub cwd: Option<String>,
-    pub git_branch: Option<String>,
-
-    // Message body
-    pub role: TurnRole,
-    pub content: MessageContent,
-
-    // Type-specific metadata
-    pub meta: TurnMeta,
-
-    // Catch-all for unmodeled fields (lossless)
-    pub extra: serde_json::Value,
-}
-
-// ---------------------------------------------------------------------------
-// TurnBuilder
-// ---------------------------------------------------------------------------
-
-/// Builder for constructing a Turn before handing it to the store.
-/// The store assigns `id`, `agent_id`, and `number`.
-#[derive(Debug, Clone)]
-pub struct TurnBuilder {
-    pub uuid: String,
-    pub parent_uuid: Option<String>,
-    pub session_id: Option<String>,
-    pub timestamp: String,
-    pub message_type: MessageType,
-    pub cwd: Option<String>,
-    pub git_branch: Option<String>,
-    pub role: TurnRole,
-    pub content: MessageContent,
-    pub meta: TurnMeta,
-    pub status: TurnStatus,
-    pub extra: serde_json::Value,
-}
-
-impl TurnBuilder {
-    fn build(self, id: TurnId, agent_id: AgentId, number: u32) -> Turn {
-        Turn {
-            id,
-            agent_id,
-            number,
-            status: self.status,
-            uuid: self.uuid,
-            parent_uuid: self.parent_uuid,
-            session_id: self.session_id,
-            timestamp: self.timestamp,
-            message_type: self.message_type,
-            cwd: self.cwd,
-            git_branch: self.git_branch,
-            role: self.role,
-            content: self.content,
-            meta: self.meta,
-            extra: self.extra,
-        }
-    }
-}
+use orchestrator_types::{AgentId, TokenUsage, Turn, TurnBuilder, TurnId, TurnMeta, TurnStatus};
 
 // ---------------------------------------------------------------------------
 // TurnStore
@@ -356,6 +120,10 @@ impl Default for TurnStore {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use orchestrator_types::{
+        AgentId, AssistantMeta, ContentBlock, MessageContent, MessageType, StopReason, SystemMeta,
+        TokenUsage, TurnBuilder, TurnId, TurnMeta, TurnRole, TurnStatus, UserMeta,
+    };
     use serde_json::json;
 
     fn agent(n: u128) -> AgentId {
@@ -478,7 +246,7 @@ mod tests {
     fn tool_result_with_string_content() {
         let block = ContentBlock::ToolResult {
             tool_use_id: "toolu_001".to_string(),
-            content: ToolResultContent::Text("file contents here".to_string()),
+            content: orchestrator_types::ToolResultContent::Text("file contents here".to_string()),
             is_error: false,
         };
         if let ContentBlock::ToolResult {
@@ -488,7 +256,7 @@ mod tests {
             assert!(!is_error);
             assert_eq!(
                 content,
-                &ToolResultContent::Text("file contents here".to_string())
+                &orchestrator_types::ToolResultContent::Text("file contents here".to_string())
             );
         } else {
             panic!("expected ToolResult block");
@@ -502,11 +270,14 @@ mod tests {
         }];
         let block = ContentBlock::ToolResult {
             tool_use_id: "toolu_002".to_string(),
-            content: ToolResultContent::Blocks(inner.clone()),
+            content: orchestrator_types::ToolResultContent::Blocks(inner.clone()),
             is_error: false,
         };
         if let ContentBlock::ToolResult { content, .. } = &block {
-            assert_eq!(content, &ToolResultContent::Blocks(inner));
+            assert_eq!(
+                content,
+                &orchestrator_types::ToolResultContent::Blocks(inner)
+            );
         } else {
             panic!("expected ToolResult block");
         }
@@ -516,7 +287,7 @@ mod tests {
     fn tool_result_error_flag() {
         let block = ContentBlock::ToolResult {
             tool_use_id: "toolu_003".to_string(),
-            content: ToolResultContent::Text("command failed".to_string()),
+            content: orchestrator_types::ToolResultContent::Text("command failed".to_string()),
             is_error: true,
         };
         if let ContentBlock::ToolResult { is_error, .. } = &block {
@@ -529,14 +300,17 @@ mod tests {
     #[test]
     fn image_block_stores_source() {
         let block = ContentBlock::Image {
-            source: ImageSource {
-                source_type: ImageSourceType::Base64,
+            source: orchestrator_types::ImageSource {
+                source_type: orchestrator_types::ImageSourceType::Base64,
                 media_type: "image/png".to_string(),
                 data: "iVBOR...".to_string(),
             },
         };
         if let ContentBlock::Image { source } = &block {
-            assert_eq!(source.source_type, ImageSourceType::Base64);
+            assert_eq!(
+                source.source_type,
+                orchestrator_types::ImageSourceType::Base64
+            );
             assert_eq!(source.media_type, "image/png");
             assert_eq!(source.data, "iVBOR...");
         } else {

@@ -1,19 +1,18 @@
 mod agent;
 mod file_activity;
 mod file_tree;
-mod focus;
 mod scrollable;
 mod trace;
 mod turn;
 
-pub use agent::{Agent, AgentId, AgentStatus, AgentStore, DisplayMode};
-pub use file_activity::{FileActivity, FileActivityStore};
-pub use file_tree::{FileEntry, FileTree};
-pub use focus::{FocusState, Page, Panel};
-pub use scrollable::{ScrollDirection, Scrollable};
-pub use trace::{Trace, TraceId, TraceStatus, TraceStore};
-pub use turn::{
-    AssistantMeta, ContentBlock, ImageSource, ImageSourceType, MessageContent, MessageType,
-    StopReason, SystemMeta, TokenUsage, ToolResultContent, Turn, TurnBuilder, TurnId, TurnMeta,
-    TurnRole, TurnStatus, TurnStore, UserMeta,
-};
+// Re-export all types from the types crate for backward compatibility.
+// Downstream crates can keep using `orchestrator_core::AgentId` etc.
+pub use orchestrator_types::*;
+
+// State containers (stores) — these stay in core.
+pub use agent::AgentStore;
+pub use file_activity::FileActivityStore;
+pub use file_tree::FileTree;
+pub use scrollable::Scrollable;
+pub use trace::TraceStore;
+pub use turn::TurnStore;

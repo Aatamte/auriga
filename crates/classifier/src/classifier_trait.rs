@@ -1,7 +1,4 @@
-use orchestrator_core::{Trace, Turn};
-
-use crate::config::ClassifierConfig;
-use crate::{ClassificationResult, ClassifierTrigger};
+use orchestrator_types::{ClassificationResult, ClassifierConfig, ClassifierTrigger, Trace, Turn};
 
 /// Trait that individual classifier implementations must satisfy.
 ///

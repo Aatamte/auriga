@@ -1,5 +1,7 @@
 ---
-last_verified: 2026-04-06
+name: principles
+description: Code quality bar, prohibited patterns, error handling and testing conventions.
+last_updated: 2026-04-06
 ---
 
 # Design Principles
