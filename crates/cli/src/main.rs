@@ -19,7 +19,7 @@ fn update() -> anyhow::Result<()> {
 
     let status = self_update::backends::github::Update::configure()
         .repo_owner("Aatamte")
-        .repo_name("agent-orchestrator")
+        .repo_name("auriga")
         .bin_name("aorch")
         .current_version(VERSION)
         .show_download_progress(true)

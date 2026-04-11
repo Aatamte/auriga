@@ -1,8 +1,8 @@
-# Agent Orchestrator
+# Auriga
 
 A terminal UI for running and managing multiple AI coding agents in parallel. Monitor output, token usage, and file activity across all your agents from a single screen.
 
-![CI](https://github.com/Aatamte/agent-orchestrator/actions/workflows/ci.yml/badge.svg)
+![CI](https://github.com/Aatamte/auriga/actions/workflows/ci.yml/badge.svg)
 
 ## Features
 
@@ -24,20 +24,20 @@ A terminal UI for running and managing multiple AI coding agents in parallel. Mo
 **Pre-built binary:**
 
 ```bash
-curl -fsSL https://github.com/Aatamte/agent-orchestrator/releases/latest/download/install.sh | bash
+curl -fsSL https://github.com/Aatamte/auriga/releases/latest/download/install.sh | bash
 ```
 
 Set `INSTALL_DIR` to change the install location (default: `~/.local/bin`):
 
 ```bash
-INSTALL_DIR=/usr/local/bin bash <(curl -fsSL https://github.com/Aatamte/agent-orchestrator/releases/latest/download/install.sh)
+INSTALL_DIR=/usr/local/bin bash <(curl -fsSL https://github.com/Aatamte/auriga/releases/latest/download/install.sh)
 ```
 
 **From source:**
 
 ```bash
-git clone https://github.com/Aatamte/agent-orchestrator.git
-cd agent-orchestrator
+git clone https://github.com/Aatamte/auriga.git
+cd auriga
 cargo build --release
 cp target/release/aorch target/release/orchestrator-app ~/.local/bin/
 ```

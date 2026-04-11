@@ -1,4 +1,4 @@
-# Agent Orchestrator
+# Auriga
 
 Native Rust TUI for managing multiple AI agent instances.
 

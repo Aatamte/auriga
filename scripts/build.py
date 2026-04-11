@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build agent-orchestrator as native release binaries."""
+"""Build auriga as native release binaries."""
 
 import platform
 import shutil
