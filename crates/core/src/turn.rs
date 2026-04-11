@@ -274,10 +274,7 @@ mod tests {
             is_error: false,
         };
         if let ContentBlock::ToolResult { content, .. } = &block {
-            assert_eq!(
-                content,
-                &auriga_types::ToolResultContent::Blocks(inner)
-            );
+            assert_eq!(content, &auriga_types::ToolResultContent::Blocks(inner));
         } else {
             panic!("expected ToolResult block");
         }
@@ -307,10 +304,7 @@ mod tests {
             },
         };
         if let ContentBlock::Image { source } = &block {
-            assert_eq!(
-                source.source_type,
-                auriga_types::ImageSourceType::Base64
-            );
+            assert_eq!(source.source_type, auriga_types::ImageSourceType::Base64);
             assert_eq!(source.media_type, "image/png");
             assert_eq!(source.data, "iVBOR...");
         } else {

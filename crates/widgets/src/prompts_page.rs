@@ -1,7 +1,7 @@
 use crate::{RenderContext, Widget, WidgetAction};
-use crossterm::event::{KeyCode, KeyEvent};
 use auriga_core::{ScrollDirection, Scrollable};
 use auriga_skills::SkillStatus;
+use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};

@@ -1,6 +1,6 @@
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use auriga_core::{AgentId, AgentStore, FileEntry, FileTree, FocusState};
 use auriga_grid::Grid;
+use criterion::{black_box, criterion_group, criterion_main, Criterion};
 // grid_to_lines was replaced by render_term — some benches need updating
 use auriga_widgets::{RenderContext, Widget, WidgetRegistry};
 use ratatui::backend::TestBackend;

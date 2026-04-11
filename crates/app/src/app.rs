@@ -4,18 +4,13 @@ use crate::types::{DiffResult, EventProxy, FileEvent, TermSize};
 use alacritty_terminal::term::{Config as TermConfig, Term};
 use alacritty_terminal::vte;
 use anyhow::Result;
-use crossterm::event::Event;
-use auriga_agent::{
-    AgentConfig, AgentMode, GenerateRequest, GenerateResponse, Provider, Session,
-};
+use auriga_agent::{AgentConfig, AgentMode, GenerateRequest, GenerateResponse, Provider, Session};
 use auriga_classifier::{
     ClassifierRegistry, ClassifierTrigger, ClassifierType, CliRuntime, CliRuntimeConfig,
     ConfigClassifier, LlmRuntimeStub,
 };
 use auriga_claude_log::{to_turn_builder, ClaudeWatchEvent, ClaudeWatchHandle};
-use auriga_core::{
-    AgentId, AgentStore, DisplayMode, FileTree, FocusState, TraceStore, TurnStore,
-};
+use auriga_core::{AgentId, AgentStore, DisplayMode, FileTree, FocusState, TraceStore, TurnStore};
 use auriga_grid::{CellRect, Grid};
 use auriga_mcp::doctor::{DoctorMcpServer, DoctorRequest, DoctorResponse};
 use auriga_mcp::{AgentInfo, ContextDocInfo, McpEvent, McpRequest, McpResponse};
@@ -27,6 +22,7 @@ use auriga_widgets::{
     DbMetadataView, FieldKind, QueryResultView, SettingsField, TableInfoView, WidgetAction,
     WidgetRegistry,
 };
+use crossterm::event::Event;
 use ratatui::layout::Rect;
 use std::collections::HashMap;
 use std::path::PathBuf;

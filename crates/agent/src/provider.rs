@@ -1,6 +1,4 @@
-use auriga_types::{
-    AgentConfig, CommandSpec, GenerateError, GenerateRequest, GenerateResponse,
-};
+use auriga_types::{AgentConfig, CommandSpec, GenerateError, GenerateRequest, GenerateResponse};
 
 /// A provider that can execute LLM generation requests.
 ///

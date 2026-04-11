@@ -13,6 +13,7 @@ mod settings_page;
 
 pub use agent_list::AgentListWidget;
 pub use agent_pane::AgentPaneWidget;
+pub use auriga_grid::WidgetId;
 pub use classifier_panel::ClassifierPanelWidget;
 pub use classifiers_page::{
     ClassifierDetailView, ClassifierStatusView, ClassifiersPage, LabelView,
@@ -25,7 +26,6 @@ pub use database_page::{
 pub use doctor_page::DoctorPage;
 pub use file_tree_widget::FileTreeWidget;
 pub use nav_bar::NavBarWidget;
-pub use auriga_grid::WidgetId;
 pub use prompts_page::{PromptsPage, SystemPromptEntry};
 pub use recent_activity::RecentActivityWidget;
 pub use settings_page::{FieldKind, SettingsField, SettingsPage};

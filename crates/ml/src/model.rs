@@ -1,11 +1,9 @@
 use anyhow::Result;
+use auriga_classifier::{ClassificationId, ClassificationResult, Classifier, ClassifierTrigger};
+use auriga_core::{Trace, Turn};
 use linfa::prelude::*;
 use linfa_trees::DecisionTree;
 use ndarray::Array2;
-use auriga_classifier::{
-    ClassificationId, ClassificationResult, Classifier, ClassifierTrigger,
-};
-use auriga_core::{Trace, Turn};
 use serde::{Deserialize, Serialize};
 
 use crate::features::extract_features;

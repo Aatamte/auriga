@@ -1,9 +1,9 @@
 use crate::app::App;
 use alacritty_terminal::grid::Scroll;
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
 use auriga_core::{Page, ScrollDirection};
 use auriga_grid::WidgetId;
 use auriga_widgets::{RenderContext, WidgetAction};
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
 use ratatui::layout::Rect;
 
 pub fn handle_key(app: &mut App, key: KeyEvent) {
@@ -134,13 +134,12 @@ pub fn handle_mouse(app: &mut App, mouse: MouseEvent) {
         MouseEventKind::Down(MouseButton::Left) => {
             let action = {
                 let terms = &app.terms;
-                let term_renderer = |id: auriga_core::AgentId,
-                                     buf: &mut ratatui::buffer::Buffer,
-                                     area: Rect| {
-                    if let Some(term) = terms.get(&id) {
-                        auriga_terminal::render_term(term, buf, area);
-                    }
-                };
+                let term_renderer =
+                    |id: auriga_core::AgentId, buf: &mut ratatui::buffer::Buffer, area: Rect| {
+                        if let Some(term) = terms.get(&id) {
+                            auriga_terminal::render_term(term, buf, area);
+                        }
+                    };
                 let hidden = crate::app::hidden_pages();
                 let ctx = RenderContext {
                     agents: &app.agents,

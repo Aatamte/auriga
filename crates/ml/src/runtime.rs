@@ -1,8 +1,8 @@
 use anyhow::Result;
-use linfa::prelude::*;
-use ndarray::Array2;
 use auriga_classifier::runtime::{ClassifierRuntime, RuntimePrediction};
 use auriga_core::{Trace, Turn};
+use linfa::prelude::*;
+use ndarray::Array2;
 use serde::Deserialize;
 
 use crate::features::extract_features;

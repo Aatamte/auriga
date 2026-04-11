@@ -235,7 +235,9 @@ mod tests {
             contents.contains("description: \"write a conventional commit from staged changes\"")
         );
         assert!(contents.contains("# Commit Message"));
-        assert!(contents.trim_end().ends_with("Write a conventional commit."));
+        assert!(contents
+            .trim_end()
+            .ends_with("Write a conventional commit."));
 
         fs::remove_dir_all(&root).ok();
     }

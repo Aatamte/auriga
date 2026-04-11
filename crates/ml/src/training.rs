@@ -1,8 +1,8 @@
 use anyhow::{bail, Result};
+use auriga_core::{Trace, Turn};
 use linfa::prelude::*;
 use linfa_trees::DecisionTree;
 use ndarray::{Array1, Array2};
-use auriga_core::{Trace, Turn};
 use std::collections::HashMap;
 use uuid::Uuid;
 

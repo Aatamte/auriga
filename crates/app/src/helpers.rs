@@ -1,5 +1,5 @@
-use ignore::WalkBuilder;
 use auriga_core::FileEntry;
+use ignore::WalkBuilder;
 use std::path::Path;
 
 pub fn git_diff_stat(path: &Path) -> Option<(usize, usize)> {

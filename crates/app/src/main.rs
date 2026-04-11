@@ -9,14 +9,14 @@ mod types;
 
 use anyhow::Result;
 use app::App;
+use auriga_core::{AgentId, Page};
+use auriga_terminal::render_term;
+use auriga_widgets::{RenderContext, Widget};
 use crossterm::event::{DisableMouseCapture, EnableMouseCapture};
 use crossterm::terminal::{
     disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen,
 };
 use crossterm::ExecutableCommand;
-use auriga_core::{AgentId, Page};
-use auriga_terminal::render_term;
-use auriga_widgets::{RenderContext, Widget};
 use ratatui::backend::CrosstermBackend;
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::Terminal;
@@ -100,11 +100,8 @@ fn main() -> Result<()> {
     // Generation thread for native mode (managed agent loop).
     // Each request carries the agent's provider name so we can dispatch
     // to the right backend (claude, codex, ...).
-    let (gen_req_tx, gen_req_rx) = mpsc::channel::<(
-        auriga_core::AgentId,
-        String,
-        auriga_agent::GenerateRequest,
-    )>();
+    let (gen_req_tx, gen_req_rx) =
+        mpsc::channel::<(auriga_core::AgentId, String, auriga_agent::GenerateRequest)>();
     let (gen_resp_tx, gen_resp_rx) = mpsc::channel();
     thread::spawn(move || {
         while let Ok((agent_id, provider_name, request)) = gen_req_rx.recv() {
