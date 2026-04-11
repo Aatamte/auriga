@@ -66,8 +66,17 @@ jobs:
           path: artifacts
           merge-multiple: true
 
+      - uses: actions/checkout@v4
+        with:
+          path: repo
+
+      - name: Stage install script
+        run: cp repo/install.sh artifacts/install.sh
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: true
-          files: artifacts/*.tar.gz
+          files: |
+            artifacts/*.tar.gz
+            artifacts/install.sh

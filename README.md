@@ -24,13 +24,13 @@ A terminal UI for running and managing multiple AI coding agents in parallel. Mo
 **Pre-built binary:**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Aatamte/agent-orchestrator/main/scripts/install.sh | bash
+curl -fsSL https://github.com/Aatamte/agent-orchestrator/releases/latest/download/install.sh | bash
 ```
 
 Set `INSTALL_DIR` to change the install location (default: `~/.local/bin`):
 
 ```bash
-INSTALL_DIR=/usr/local/bin bash <(curl -fsSL https://raw.githubusercontent.com/Aatamte/agent-orchestrator/main/scripts/install.sh)
+INSTALL_DIR=/usr/local/bin bash <(curl -fsSL https://github.com/Aatamte/agent-orchestrator/releases/latest/download/install.sh)
 ```
 
 **From source:**
