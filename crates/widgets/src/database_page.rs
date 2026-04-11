@@ -1,6 +1,6 @@
 use crate::{RenderContext, Widget, WidgetAction};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use orchestrator_core::ScrollDirection;
+use auriga_core::ScrollDirection;
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
@@ -180,7 +180,7 @@ impl Widget for DatabasePage {
             let size_str = format_size(meta.file_size_bytes);
             lines.push(Line::from(vec![
                 Span::styled(
-                    "  orchestrator.db",
+                    "  auriga.db",
                     Style::default()
                         .fg(Color::White)
                         .add_modifier(Modifier::BOLD),

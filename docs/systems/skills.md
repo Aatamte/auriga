@@ -2,7 +2,7 @@
 
 ## Overview
 
-Skills are executable capabilities that can be attached to the orchestrator. They follow the same trait-and-registry pattern as classifiers but are action-oriented rather than analysis-oriented — a classifier observes, a skill acts.
+Skills are executable capabilities that can be attached to Auriga. They follow the same trait-and-registry pattern as classifiers but are action-oriented rather than analysis-oriented — a classifier observes, a skill acts.
 
 ## Design
 

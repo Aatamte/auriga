@@ -1,21 +1,21 @@
 [package]
-name = "orchestrator-app"
+name = "auriga-app"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-orchestrator-agent = { path = "../agent" }
-orchestrator-core = { path = "../core" }
-orchestrator-grid = { path = "../grid" }
-orchestrator-widgets = { path = "../widgets" }
-orchestrator-terminal = { path = "../terminal" }
-orchestrator-pty = { path = "../pty" }
-orchestrator-claude-log = { path = "../claude-log" }
-orchestrator-mcp = { path = "../mcp" }
-orchestrator-storage = { path = "../storage" }
-orchestrator-classifier = { path = "../classifier" }
-orchestrator-skills = { path = "../skills" }
-orchestrator-ml = { path = "../ml" }
+auriga-agent = { path = "../agent" }
+auriga-core = { path = "../core" }
+auriga-grid = { path = "../grid" }
+auriga-widgets = { path = "../widgets" }
+auriga-terminal = { path = "../terminal" }
+auriga-pty = { path = "../pty" }
+auriga-claude-log = { path = "../claude-log" }
+auriga-mcp = { path = "../mcp" }
+auriga-storage = { path = "../storage" }
+auriga-classifier = { path = "../classifier" }
+auriga-skills = { path = "../skills" }
+auriga-ml = { path = "../ml" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 ratatui = { workspace = true }

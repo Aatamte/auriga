@@ -1,10 +1,10 @@
 use anyhow::Result;
-use orchestrator_grid::Grid;
+use auriga_grid::Grid;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-const DIR_NAME: &str = ".agent-orchestrator";
+const DIR_NAME: &str = ".auriga";
 const CONFIG_FILE: &str = "config.json";
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -81,7 +81,7 @@ pub fn dir_path() -> PathBuf {
     PathBuf::from(DIR_NAME)
 }
 
-/// Ensures `.agent-orchestrator/` exists with default files.
+/// Ensures `.auriga/` exists with default files.
 /// Returns the loaded config.
 pub fn init() -> Result<Config> {
     let dir = dir_path();
@@ -149,8 +149,8 @@ pub fn save(config: &Config) -> Result<()> {
     Ok(())
 }
 
-/// Load all presets from `.agent-orchestrator/presets/`.
-pub fn load_presets() -> Vec<orchestrator_core::ClaudePreset> {
+/// Load all presets from `.auriga/presets/`.
+pub fn load_presets() -> Vec<auriga_core::ClaudePreset> {
     let presets_dir = dir_path().join("presets");
     let Ok(entries) = fs::read_dir(&presets_dir) else {
         return Vec::new();
@@ -165,7 +165,7 @@ pub fn load_presets() -> Vec<orchestrator_core::ClaudePreset> {
         let Ok(contents) = fs::read_to_string(&path) else {
             continue;
         };
-        let Ok(preset) = serde_json::from_str::<orchestrator_core::ClaudePreset>(&contents) else {
+        let Ok(preset) = serde_json::from_str::<auriga_core::ClaudePreset>(&contents) else {
             continue;
         };
         presets.push(preset);
@@ -174,7 +174,7 @@ pub fn load_presets() -> Vec<orchestrator_core::ClaudePreset> {
 }
 
 /// Load the active preset from disk.
-pub fn load_active_preset() -> Option<orchestrator_core::ClaudePreset> {
+pub fn load_active_preset() -> Option<auriga_core::ClaudePreset> {
     let config_path = dir_path().join(CONFIG_FILE);
     let contents = fs::read_to_string(&config_path).ok()?;
     let config: Config = serde_json::from_str(&contents).ok()?;

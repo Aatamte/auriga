@@ -1,4 +1,4 @@
-use orchestrator_types::{AgentId, TokenUsage, Trace, TraceId, TraceStatus};
+use auriga_types::{AgentId, TokenUsage, Trace, TraceId, TraceStatus};
 
 // ---------------------------------------------------------------------------
 // TraceStore

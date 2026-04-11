@@ -1,14 +1,14 @@
 use serde::{Deserialize, Serialize};
 
-/// How the orchestrator interacts with the agent.
+/// How Auriga interacts with the agent.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AgentMode {
     /// Single request/response. No session. No tool loop.
     Generate,
-    /// Orchestrator-managed agent loop with tool execution.
+    /// Auriga-managed agent loop with tool execution.
     Managed,
-    /// Spawn native CLI process. Orchestrator observes but does not control.
+    /// Spawn native CLI process. Auriga observes but does not control.
     NativeCli,
 }
 
@@ -30,7 +30,7 @@ pub struct AgentConfig {
     /// Temperature (0.0 - 1.0). None means provider default.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub temperature: Option<f64>,
-    /// How the agent interacts with the orchestrator.
+    /// How the agent interacts with Auriga.
     pub mode: AgentMode,
     /// Provider-specific configuration (opaque JSON).
     /// Parsed by the provider implementation.

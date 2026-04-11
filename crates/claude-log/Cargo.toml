@@ -1,10 +1,10 @@
 [package]
-name = "orchestrator-claude-log"
+name = "auriga-claude-log"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-orchestrator-core = { path = "../core" }
+auriga-core = { path = "../core" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 anyhow = { workspace = true }

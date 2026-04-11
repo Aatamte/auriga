@@ -1,4 +1,4 @@
-use orchestrator_types::{
+use auriga_types::{
     AgentConfig, CommandSpec, GenerateError, GenerateRequest, GenerateResponse,
 };
 

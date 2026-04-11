@@ -1,11 +1,11 @@
 [package]
-name = "orchestrator-ml"
+name = "auriga-ml"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-orchestrator-core = { path = "../core" }
-orchestrator-classifier = { path = "../classifier" }
+auriga-core = { path = "../core" }
+auriga-classifier = { path = "../classifier" }
 linfa = "0.8"
 linfa-trees = { version = "0.8", features = ["serde"] }
 ndarray = "0.16"

@@ -1,5 +1,5 @@
 use crate::{ClassifierStatusView, RenderContext, Widget, WidgetAction};
-use orchestrator_core::ScrollDirection;
+use auriga_core::ScrollDirection;
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span};
@@ -94,7 +94,7 @@ impl Widget for ClassifierPanelWidget {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use orchestrator_core::{AgentStore, FileTree, FocusState, TraceStore, TurnStore};
+    use auriga_core::{AgentStore, FileTree, FocusState, TraceStore, TurnStore};
     use std::path::PathBuf;
 
     macro_rules! with_ctx {
@@ -104,7 +104,7 @@ mod tests {
             let traces = TraceStore::new();
             let focus = FocusState::new();
             let file_tree = FileTree::new(PathBuf::from("/tmp"));
-            let noop = |_: orchestrator_core::AgentId, _: &mut ratatui::buffer::Buffer, _: Rect| {};
+            let noop = |_: auriga_core::AgentId, _: &mut ratatui::buffer::Buffer, _: Rect| {};
             let $ctx = RenderContext {
                 agents: &agents,
                 turns: &turns,

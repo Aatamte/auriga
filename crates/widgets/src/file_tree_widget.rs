@@ -1,5 +1,5 @@
 use crate::{RenderContext, Widget, WidgetAction};
-use orchestrator_core::{FileEntry, ScrollDirection, Scrollable};
+use auriga_core::{FileEntry, ScrollDirection, Scrollable};
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
@@ -118,7 +118,7 @@ impl Widget for FileTreeWidget {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use orchestrator_core::{AgentId, AgentStore, FileTree, FocusState, TraceStore, TurnStore};
+    use auriga_core::{AgentId, AgentStore, FileTree, FocusState, TraceStore, TurnStore};
     use std::path::PathBuf;
 
     macro_rules! with_ctx {

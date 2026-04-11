@@ -1,7 +1,7 @@
 use crate::{RenderContext, Widget, WidgetAction};
 use crossterm::event::{KeyCode, KeyEvent};
-use orchestrator_core::{ScrollDirection, Scrollable};
-use orchestrator_skills::SkillStatus;
+use auriga_core::{ScrollDirection, Scrollable};
+use auriga_skills::SkillStatus;
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
@@ -9,7 +9,7 @@ use ratatui::widgets::{Block, Borders, Paragraph};
 use ratatui::Frame;
 
 // ---------------------------------------------------------------------------
-// System prompt entry (loaded from .agent-orchestrator/prompts/*.json)
+// System prompt entry (loaded from .auriga/prompts/*.json)
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone)]

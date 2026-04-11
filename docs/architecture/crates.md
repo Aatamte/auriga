@@ -24,7 +24,7 @@ The workspace contains 14 crates organized by responsibility. Dependencies flow 
 
 **Entry points** — binary crates:
 - `app` — the TUI binary, wires everything together
-- `cli` — the `aorch` binary, launches the TUI and handles updates
+- `cli` — the `auriga` binary, launches the TUI and handles updates
 
 **Testing** — `benches` for criterion benchmarks.
 

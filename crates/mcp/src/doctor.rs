@@ -1,8 +1,8 @@
 use crate::jsonrpc::{Request, Response};
-use orchestrator_classifier::ClassifierConfig;
-use orchestrator_classifier::ClassifierStatus;
-use orchestrator_core::TraceId;
-use orchestrator_storage::Database;
+use auriga_classifier::ClassifierConfig;
+use auriga_classifier::ClassifierStatus;
+use auriga_core::TraceId;
+use auriga_storage::Database;
 use serde_json::json;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc;
@@ -136,10 +136,10 @@ fn handle_initialize(req: &Request) -> Response {
                 "tools": {}
             },
             "serverInfo": {
-                "name": "orchestrator-doctor",
+                "name": "auriga-doctor",
                 "version": "0.1.0"
             },
-            "instructions": "You are the doctor agent for an AI agent orchestrator. You have tools to inspect agent traces, turns, and classifier results stored in the orchestrator's database. Use these tools to analyze agent behavior, identify patterns, and diagnose issues."
+            "instructions": "You are the doctor agent for an Auriga. You have tools to inspect agent traces, turns, and classifier results stored in Auriga's database. Use these tools to analyze agent behavior, identify patterns, and diagnose issues."
         }),
     )
 }
@@ -194,7 +194,7 @@ fn handle_tools_list(req: &Request) -> Response {
                 },
                 {
                     "name": "create_classifier",
-                    "description": "Create a new classifier config. Writes a .json file and registers it in the orchestrator. The config defines the classifier name, trigger, and the set of labels the ML model can output.",
+                    "description": "Create a new classifier config. Writes a .json file and registers it in Auriga. The config defines the classifier name, trigger, and the set of labels the ML model can output.",
                     "inputSchema": {
                         "type": "object",
                         "properties": {
@@ -423,7 +423,7 @@ fn handle_tools_call(
             };
 
             if event_tx.send(event).is_err() {
-                return tool_error(req, "Orchestrator is shutting down");
+                return tool_error(req, "Auriga is shutting down");
             }
 
             match response_rx.recv() {
@@ -441,8 +441,8 @@ fn handle_tools_call(
                     let text = serde_json::to_string_pretty(&items).unwrap_or_default();
                     tool_success(req, &text)
                 }
-                Ok(_) => tool_error(req, "Unexpected response from orchestrator"),
-                Err(_) => tool_error(req, "Failed to get response from orchestrator"),
+                Ok(_) => tool_error(req, "Unexpected response from auriga"),
+                Err(_) => tool_error(req, "Failed to get response from auriga"),
             }
         }
         "create_classifier" => {
@@ -463,7 +463,7 @@ fn handle_tools_call(
             }
 
             // Write the config file
-            if let Err(e) = orchestrator_classifier::save_config(&file_path, &config) {
+            if let Err(e) = auriga_classifier::save_config(&file_path, &config) {
                 return tool_error(req, &format!("Failed to write config: {}", e));
             }
 
@@ -474,7 +474,7 @@ fn handle_tools_call(
                 response_tx,
             };
             if event_tx.send(event).is_err() {
-                return tool_error(req, "Orchestrator is shutting down");
+                return tool_error(req, "Auriga is shutting down");
             }
             let _ = response_rx.recv();
 
@@ -618,8 +618,8 @@ fn handle_tools_call(
             };
 
             // Train
-            let params = orchestrator_ml::TrainParams::default();
-            let result = match orchestrator_ml::train_decision_tree(
+            let params = auriga_ml::TrainParams::default();
+            let result = match auriga_ml::train_decision_tree(
                 &training_data,
                 classifier_name,
                 next_version,
@@ -682,8 +682,8 @@ fn tool_error(req: &Request, message: &str) -> Response {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use orchestrator_core::{AgentId, TokenUsage, Trace, TraceStatus};
-    use orchestrator_storage::Database;
+    use auriga_core::{AgentId, TokenUsage, Trace, TraceStatus};
+    use auriga_storage::Database;
     use tempfile::TempDir;
 
     fn make_request(method: &str, params: serde_json::Value) -> Request {
@@ -726,7 +726,7 @@ mod tests {
         let req = make_request("initialize", json!({}));
         let resp = handle_request(&req, &db, &tx, dir.path()).unwrap();
         let result = resp.result.unwrap();
-        assert_eq!(result["serverInfo"]["name"], "orchestrator-doctor");
+        assert_eq!(result["serverInfo"]["name"], "auriga-doctor");
     }
 
     #[test]
@@ -863,9 +863,9 @@ mod tests {
             .response_tx
             .send(DoctorResponse::Classifiers(vec![ClassifierStatus {
                 name: "loop-detector".to_string(),
-                trigger: orchestrator_classifier::ClassifierTrigger::new(
-                    orchestrator_classifier::TriggerPhase::Both,
-                    orchestrator_classifier::TurnFilter::default(),
+                trigger: auriga_classifier::ClassifierTrigger::new(
+                    auriga_classifier::TriggerPhase::Both,
+                    auriga_classifier::TurnFilter::default(),
                 ),
                 enabled: true,
             }]))
@@ -923,11 +923,11 @@ mod tests {
         // Verify the file was written
         let file_path = dir.path().join("test-classifier.json");
         assert!(file_path.exists());
-        let loaded = orchestrator_classifier::load_config(&file_path).unwrap();
+        let loaded = auriga_classifier::load_config(&file_path).unwrap();
         assert_eq!(loaded.name, "test-classifier");
         assert_eq!(
             loaded.classifier_type,
-            orchestrator_classifier::ClassifierType::Ml
+            auriga_classifier::ClassifierType::Ml
         );
         assert_eq!(loaded.runtime["model"], "test-v1");
         assert_eq!(loaded.labels.len(), 2);
@@ -941,19 +941,19 @@ mod tests {
         let dir_path = dir.path().to_path_buf();
 
         // Write an existing config
-        let existing = orchestrator_classifier::ClassifierConfig {
+        let existing = auriga_classifier::ClassifierConfig {
             name: "existing".into(),
             description: "Already here".into(),
             version: "1.0".into(),
             enabled: true,
-            trigger: orchestrator_classifier::ConfigTrigger::Simple(
-                orchestrator_classifier::TriggerPhase::OnComplete,
+            trigger: auriga_classifier::ConfigTrigger::Simple(
+                auriga_classifier::TriggerPhase::OnComplete,
             ),
-            classifier_type: orchestrator_classifier::ClassifierType::Ml,
+            classifier_type: auriga_classifier::ClassifierType::Ml,
             runtime: json!({}),
             labels: vec![],
         };
-        orchestrator_classifier::save_config(&dir.path().join("existing.json"), &existing).unwrap();
+        auriga_classifier::save_config(&dir.path().join("existing.json"), &existing).unwrap();
 
         let req = make_request(
             "tools/call",

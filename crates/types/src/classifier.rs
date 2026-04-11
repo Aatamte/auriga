@@ -169,7 +169,7 @@ impl Notification {
 
     pub fn format_xml(&self, classifier: &str, trace_id: &str) -> String {
         format!(
-            "<aorch-notification classifier=\"{}\" trace=\"{}\">\n{}\n</aorch-notification>\n",
+            "<auriga-notification classifier=\"{}\" trace=\"{}\">\n{}\n</auriga-notification>\n",
             classifier, trace_id, self.message,
         )
     }

@@ -1,9 +1,9 @@
 use crate::app::App;
 use alacritty_terminal::grid::Scroll;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
-use orchestrator_core::{Page, ScrollDirection};
-use orchestrator_grid::WidgetId;
-use orchestrator_widgets::{RenderContext, WidgetAction};
+use auriga_core::{Page, ScrollDirection};
+use auriga_grid::WidgetId;
+use auriga_widgets::{RenderContext, WidgetAction};
 use ratatui::layout::Rect;
 
 pub fn handle_key(app: &mut App, key: KeyEvent) {
@@ -61,7 +61,7 @@ pub fn handle_key(app: &mut App, key: KeyEvent) {
                 .focus
                 .active_agent
                 .and_then(|id| app.agents.get(id))
-                .map(|a| a.display_mode == orchestrator_core::DisplayMode::Native)
+                .map(|a| a.display_mode == auriga_core::DisplayMode::Native)
                 .unwrap_or(false);
 
             if is_native {
@@ -134,11 +134,11 @@ pub fn handle_mouse(app: &mut App, mouse: MouseEvent) {
         MouseEventKind::Down(MouseButton::Left) => {
             let action = {
                 let terms = &app.terms;
-                let term_renderer = |id: orchestrator_core::AgentId,
+                let term_renderer = |id: auriga_core::AgentId,
                                      buf: &mut ratatui::buffer::Buffer,
                                      area: Rect| {
                     if let Some(term) = terms.get(&id) {
-                        orchestrator_terminal::render_term(term, buf, area);
+                        auriga_terminal::render_term(term, buf, area);
                     }
                 };
                 let hidden = crate::app::hidden_pages();

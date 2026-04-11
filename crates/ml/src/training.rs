@@ -2,7 +2,7 @@ use anyhow::{bail, Result};
 use linfa::prelude::*;
 use linfa_trees::DecisionTree;
 use ndarray::{Array1, Array2};
-use orchestrator_core::{Trace, Turn};
+use auriga_core::{Trace, Turn};
 use std::collections::HashMap;
 use uuid::Uuid;
 
@@ -174,8 +174,8 @@ fn now_iso8601() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use orchestrator_classifier::Classifier;
-    use orchestrator_core::*;
+    use auriga_classifier::Classifier;
+    use auriga_core::*;
 
     fn make_sample(turn_count: u32, tokens: u64, label: &str) -> (Trace, Vec<Turn>, String) {
         let trace = Trace {

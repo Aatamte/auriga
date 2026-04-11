@@ -106,6 +106,208 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1505bd5d3d116872e7271a6d4e16d81d0c8570876c8de68093a09ac269d8aac0"
 
 [[package]]
+name = "auriga-agent"
+version = "0.1.0"
+dependencies = [
+ "auriga-core",
+ "auriga-types",
+ "serde",
+ "serde_json",
+ "uuid",
+]
+
+[[package]]
+name = "auriga-app"
+version = "0.1.0"
+dependencies = [
+ "alacritty_terminal",
+ "anyhow",
+ "auriga-agent",
+ "auriga-classifier",
+ "auriga-claude-log",
+ "auriga-core",
+ "auriga-grid",
+ "auriga-mcp",
+ "auriga-ml",
+ "auriga-pty",
+ "auriga-skills",
+ "auriga-storage",
+ "auriga-terminal",
+ "auriga-widgets",
+ "crossterm",
+ "ignore",
+ "notify",
+ "ratatui",
+ "serde",
+ "serde_json",
+ "tracing",
+ "tracing-appender",
+ "tracing-subscriber",
+]
+
+[[package]]
+name = "auriga-benches"
+version = "0.1.0"
+dependencies = [
+ "alacritty_terminal",
+ "auriga-core",
+ "auriga-grid",
+ "auriga-terminal",
+ "auriga-widgets",
+ "criterion",
+ "ratatui",
+]
+
+[[package]]
+name = "auriga-classifier"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "auriga-core",
+ "auriga-types",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "auriga-claude-log"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "auriga-core",
+ "dirs",
+ "notify",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "auriga-cli"
+version = "0.1.1"
+dependencies = [
+ "anyhow",
+ "self_update",
+]
+
+[[package]]
+name = "auriga-core"
+version = "0.1.0"
+dependencies = [
+ "auriga-types",
+ "serde",
+ "serde_json",
+ "uuid",
+]
+
+[[package]]
+name = "auriga-grid"
+version = "0.1.0"
+dependencies = [
+ "ratatui",
+ "serde",
+]
+
+[[package]]
+name = "auriga-mcp"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "auriga-classifier",
+ "auriga-core",
+ "auriga-ml",
+ "auriga-storage",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tiny_http",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "auriga-ml"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "auriga-classifier",
+ "auriga-core",
+ "linfa",
+ "linfa-trees",
+ "ndarray",
+ "serde",
+ "serde_json",
+ "uuid",
+]
+
+[[package]]
+name = "auriga-pty"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "auriga-core",
+ "portable-pty",
+]
+
+[[package]]
+name = "auriga-skills"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "auriga-core",
+ "auriga-types",
+ "serde",
+ "serde_json",
+ "uuid",
+]
+
+[[package]]
+name = "auriga-storage"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "auriga-classifier",
+ "auriga-core",
+ "auriga-ml",
+ "rusqlite",
+ "serde_json",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "auriga-terminal"
+version = "0.1.0"
+dependencies = [
+ "alacritty_terminal",
+ "ratatui",
+]
+
+[[package]]
+name = "auriga-types"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "uuid",
+]
+
+[[package]]
+name = "auriga-widgets"
+version = "0.1.0"
+dependencies = [
+ "auriga-core",
+ "auriga-grid",
+ "auriga-skills",
+ "auriga-terminal",
+ "crossterm",
+ "ratatui",
+ "serde_json",
+]
+
+[[package]]
 name = "autocfg"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1676,208 +1878,6 @@ name = "option-ext"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "04744f49eae99ab78e0d5c0b603ab218f515ea8cfe5a456d7629ad883a3b6e7d"
-
-[[package]]
-name = "orchestrator-agent"
-version = "0.1.0"
-dependencies = [
- "orchestrator-core",
- "orchestrator-types",
- "serde",
- "serde_json",
- "uuid",
-]
-
-[[package]]
-name = "orchestrator-app"
-version = "0.1.0"
-dependencies = [
- "alacritty_terminal",
- "anyhow",
- "crossterm",
- "ignore",
- "notify",
- "orchestrator-agent",
- "orchestrator-classifier",
- "orchestrator-claude-log",
- "orchestrator-core",
- "orchestrator-grid",
- "orchestrator-mcp",
- "orchestrator-ml",
- "orchestrator-pty",
- "orchestrator-skills",
- "orchestrator-storage",
- "orchestrator-terminal",
- "orchestrator-widgets",
- "ratatui",
- "serde",
- "serde_json",
- "tracing",
- "tracing-appender",
- "tracing-subscriber",
-]
-
-[[package]]
-name = "orchestrator-benches"
-version = "0.1.0"
-dependencies = [
- "alacritty_terminal",
- "criterion",
- "orchestrator-core",
- "orchestrator-grid",
- "orchestrator-terminal",
- "orchestrator-widgets",
- "ratatui",
-]
-
-[[package]]
-name = "orchestrator-classifier"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "orchestrator-core",
- "orchestrator-types",
- "serde",
- "serde_json",
- "tempfile",
- "tracing",
- "uuid",
-]
-
-[[package]]
-name = "orchestrator-claude-log"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "dirs",
- "notify",
- "orchestrator-core",
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "orchestrator-cli"
-version = "0.1.1"
-dependencies = [
- "anyhow",
- "self_update",
-]
-
-[[package]]
-name = "orchestrator-core"
-version = "0.1.0"
-dependencies = [
- "orchestrator-types",
- "serde",
- "serde_json",
- "uuid",
-]
-
-[[package]]
-name = "orchestrator-grid"
-version = "0.1.0"
-dependencies = [
- "ratatui",
- "serde",
-]
-
-[[package]]
-name = "orchestrator-mcp"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "orchestrator-classifier",
- "orchestrator-core",
- "orchestrator-ml",
- "orchestrator-storage",
- "serde",
- "serde_json",
- "tempfile",
- "tiny_http",
- "tracing",
- "uuid",
-]
-
-[[package]]
-name = "orchestrator-ml"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "linfa",
- "linfa-trees",
- "ndarray",
- "orchestrator-classifier",
- "orchestrator-core",
- "serde",
- "serde_json",
- "uuid",
-]
-
-[[package]]
-name = "orchestrator-pty"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "orchestrator-core",
- "portable-pty",
-]
-
-[[package]]
-name = "orchestrator-skills"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "orchestrator-core",
- "orchestrator-types",
- "serde",
- "serde_json",
- "uuid",
-]
-
-[[package]]
-name = "orchestrator-storage"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "orchestrator-classifier",
- "orchestrator-core",
- "orchestrator-ml",
- "rusqlite",
- "serde_json",
- "tracing",
- "uuid",
-]
-
-[[package]]
-name = "orchestrator-terminal"
-version = "0.1.0"
-dependencies = [
- "alacritty_terminal",
- "ratatui",
-]
-
-[[package]]
-name = "orchestrator-types"
-version = "0.1.0"
-dependencies = [
- "serde",
- "serde_json",
- "uuid",
-]
-
-[[package]]
-name = "orchestrator-widgets"
-version = "0.1.0"
-dependencies = [
- "crossterm",
- "orchestrator-core",
- "orchestrator-grid",
- "orchestrator-skills",
- "orchestrator-terminal",
- "ratatui",
- "serde_json",
-]
 
 [[package]]
 name = "parking_lot"

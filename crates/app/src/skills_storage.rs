@@ -23,7 +23,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use anyhow::{bail, Result};
-use orchestrator_skills::Skill;
+use auriga_skills::Skill;
 
 const CLAUDE_SKILLS_DIR: &str = ".claude/skills";
 const AGENTS_SKILLS_DIR: &str = ".agents/skills";

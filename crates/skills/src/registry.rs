@@ -1,6 +1,6 @@
 use crate::{Skill, SkillStatus};
 
-/// Holds every skill that ships with the orchestrator binary.
+/// Holds every skill that ships with Auriga binary.
 ///
 /// The registry is purely a lookup: it owns the `Box<dyn Skill>`
 /// instances and exposes their metadata + body content. Whether a

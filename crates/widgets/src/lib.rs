@@ -25,12 +25,12 @@ pub use database_page::{
 pub use doctor_page::DoctorPage;
 pub use file_tree_widget::FileTreeWidget;
 pub use nav_bar::NavBarWidget;
-pub use orchestrator_grid::WidgetId;
+pub use auriga_grid::WidgetId;
 pub use prompts_page::{PromptsPage, SystemPromptEntry};
 pub use recent_activity::RecentActivityWidget;
 pub use settings_page::{FieldKind, SettingsField, SettingsPage};
 
-use orchestrator_core::{
+use auriga_core::{
     AgentId, AgentStore, FileTree, FocusState, Page, ScrollDirection, TraceStore, TurnStore,
 };
 use ratatui::layout::Rect;

@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 
 use crate::runtime::ClassifierRuntime;
 use crate::Classifier;
-use orchestrator_types::{
+use auriga_types::{
     ClassificationId, ClassificationResult, ClassifierConfig, ClassifierTrigger, Notification,
     Trace, Turn,
 };
@@ -143,7 +143,7 @@ impl Classifier for ConfigClassifier {
 mod tests {
     use super::*;
     use crate::runtime::RuntimePrediction;
-    use orchestrator_types::{
+    use auriga_types::{
         AgentId, ClassifierType, ConfigTrigger, LabelConfig, NotificationConfig, TokenUsage,
         TraceId, TraceStatus, TriggerConfig, TriggerPhase,
     };

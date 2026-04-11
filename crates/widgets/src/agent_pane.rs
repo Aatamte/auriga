@@ -1,5 +1,5 @@
 use crate::{format_tokens, RenderContext, Widget, WidgetAction};
-use orchestrator_core::{
+use auriga_core::{
     AgentId, AgentStatus, ContentBlock, DisplayMode, MessageContent, ScrollDirection, Scrollable,
     TurnRole,
 };

@@ -73,7 +73,7 @@ crates/widgets/src/classifiers_page.rs:
     - "Canonical pattern for adding a new list page — follow this file's structure"
 
 crates/agent/src/provider.rs:
-  purpose: "Provider trait definition. The interface between orchestrator and LLM backends."
+  purpose: "Provider trait definition. The interface between auriga and LLM backends."
   key_types:
     Provider: "trait — name(), generate(), build_command(). One impl per LLM vendor."
     GenerateError: "Enum of all generation failure modes."

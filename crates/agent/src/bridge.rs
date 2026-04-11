@@ -1,4 +1,4 @@
-use orchestrator_types::{
+use auriga_types::{
     AssistantMeta, GenerateResponse, Message, MessageContent, MessageType, Role, SessionId,
     TurnBuilder, TurnMeta, TurnRole, TurnStatus, UserMeta,
 };
@@ -71,7 +71,7 @@ pub fn role_to_turn_role(role: Role) -> TurnRole {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use orchestrator_types::{ContentBlock, StopReason, TokenUsage};
+    use auriga_types::{ContentBlock, StopReason, TokenUsage};
 
     #[test]
     fn user_message_to_turn_produces_correct_fields() {

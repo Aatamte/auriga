@@ -1,5 +1,5 @@
-use orchestrator_core::TraceId;
-use orchestrator_ml::SavedModel;
+use auriga_core::TraceId;
+use auriga_ml::SavedModel;
 use rusqlite::params;
 use uuid::Uuid;
 
@@ -164,15 +164,15 @@ mod tests {
         let trace_id = TraceId::from_u128(1);
 
         // Need a trace first (FK might not be enforced, but let's be safe)
-        let trace = orchestrator_core::Trace {
+        let trace = auriga_core::Trace {
             id: trace_id,
-            agent_id: orchestrator_core::AgentId::from_u128(1),
+            agent_id: auriga_core::AgentId::from_u128(1),
             session_id: "s1".into(),
-            status: orchestrator_core::TraceStatus::Complete,
+            status: auriga_core::TraceStatus::Complete,
             started_at: "2026-01-01T00:00:00Z".into(),
             completed_at: None,
             turn_count: 0,
-            token_usage: orchestrator_core::TokenUsage {
+            token_usage: auriga_core::TokenUsage {
                 input_tokens: 0,
                 output_tokens: 0,
                 cache_creation_input_tokens: None,
@@ -278,15 +278,15 @@ mod tests {
         let db = Database::open_in_memory().unwrap();
         let trace_id = TraceId::from_u128(1);
 
-        let trace = orchestrator_core::Trace {
+        let trace = auriga_core::Trace {
             id: trace_id,
-            agent_id: orchestrator_core::AgentId::from_u128(1),
+            agent_id: auriga_core::AgentId::from_u128(1),
             session_id: "s1".into(),
-            status: orchestrator_core::TraceStatus::Complete,
+            status: auriga_core::TraceStatus::Complete,
             started_at: "2026-01-01T00:00:00Z".into(),
             completed_at: None,
             turn_count: 0,
-            token_usage: orchestrator_core::TokenUsage {
+            token_usage: auriga_core::TokenUsage {
                 input_tokens: 0,
                 output_tokens: 0,
                 cache_creation_input_tokens: None,

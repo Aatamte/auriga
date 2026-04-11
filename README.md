@@ -12,7 +12,7 @@ A terminal UI for running and managing multiple AI coding agents in parallel. Mo
 - **MCP server** — built-in [Model Context Protocol](https://modelcontextprotocol.io/) server so agents can discover and message each other
 - **Trace recording** — every agent session is logged to a local SQLite database for review
 - **Classifiers** — attach classifiers to agent traces to detect patterns (looping, budget overruns, etc.)
-- **Customizable layout** — 12-column grid layout, configurable via `.agent-orchestrator/layout.json`
+- **Customizable layout** — 12-column grid layout, configurable via `.auriga/layout.json`
 
 ## Requirements
 
@@ -39,13 +39,13 @@ INSTALL_DIR=/usr/local/bin bash <(curl -fsSL https://github.com/Aatamte/auriga/r
 git clone https://github.com/Aatamte/auriga.git
 cd auriga
 cargo build --release
-cp target/release/aorch target/release/orchestrator-app ~/.local/bin/
+cp target/release/auriga target/release/auriga-app ~/.local/bin/
 ```
 
 ## Quick start
 
 ```bash
-aorch
+auriga
 ```
 
 This opens the TUI. From there:
@@ -60,27 +60,27 @@ Navigate between pages using the tab bar at the top: **Home**, **Classifiers**, 
 ## Updating
 
 ```bash
-aorch update
+auriga update
 ```
 
 ## Configuration
 
-On first run, `aorch` creates a `.agent-orchestrator/` directory in your project root:
+On first run, `auriga` creates a `.auriga/` directory in your project root:
 
 | File | Purpose |
 |---|---|
 | `config.json` | MCP port (default: 7850), disabled classifiers |
 | `layout.json` | Grid layout configuration |
-| `orchestrator.db` | SQLite database with traces, turns, and classifications |
+| `auriga.db` | SQLite database with traces, turns, and classifications |
 
 ## MCP integration
 
-The orchestrator runs an MCP server on `127.0.0.1:7850` (configurable). It exposes two tools:
+The auriga runs an MCP server on `127.0.0.1:7850` (configurable). It exposes two tools:
 
 - `list_agents` — returns all running agents with their UUID, name, and status
 - `send_message` — send a message from one agent to another
 
-A `.mcp.json` is written to your project root while the orchestrator is running, so agents using Claude Code automatically connect.
+A `.mcp.json` is written to your project root while Auriga is running, so agents using Claude Code automatically connect.
 
 ## Contributing
 

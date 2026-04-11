@@ -5,7 +5,7 @@
 //! - `generate` runs `codex exec --json`, parses the JSONL event stream,
 //!   and reduces it into a `GenerateResponse`.
 
-use orchestrator_types::{
+use auriga_types::{
     AgentConfig, AgentMode, CodexCliConfig, CommandSpec, ContentBlock, GenerateError,
     GenerateRequest, GenerateResponse, StopReason, TokenUsage,
 };
@@ -27,10 +27,10 @@ impl Provider for CodexProvider {
             .messages
             .iter()
             .rev()
-            .find(|m| matches!(m.role, orchestrator_types::Role::User))
+            .find(|m| matches!(m.role, auriga_types::Role::User))
             .map(|m| match &m.content {
-                orchestrator_types::MessageContent::Text(t) => t.clone(),
-                orchestrator_types::MessageContent::Blocks(blocks) => blocks
+                auriga_types::MessageContent::Text(t) => t.clone(),
+                auriga_types::MessageContent::Blocks(blocks) => blocks
                     .iter()
                     .filter_map(|b| match b {
                         ContentBlock::Text { text } => Some(text.as_str()),
@@ -311,7 +311,7 @@ fn parse_events(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use orchestrator_types::GenerateRequest;
+    use auriga_types::GenerateRequest;
 
     fn base_config() -> AgentConfig {
         AgentConfig {

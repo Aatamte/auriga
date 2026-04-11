@@ -6,7 +6,7 @@ Persistence is handled by SQLite through a background thread. The main thread se
 
 ## Database
 
-Located at `.agent-orchestrator/orchestrator.db`, created on first run. The schema is versioned with incremental migrations — each version adds new tables without modifying existing ones. Migration runs automatically on every database open.
+Located at `.auriga/auriga.db`, created on first run. The schema is versioned with incremental migrations — each version adds new tables without modifying existing ones. Migration runs automatically on every database open.
 
 ## Data Model
 

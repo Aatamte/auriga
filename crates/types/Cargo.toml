@@ -1,5 +1,5 @@
 [package]
-name = "orchestrator-types"
+name = "auriga-types"
 version = "0.1.0"
 edition = "2021"
 

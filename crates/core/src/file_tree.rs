@@ -1,4 +1,4 @@
-use orchestrator_types::{AgentId, FileEntry};
+use auriga_types::{AgentId, FileEntry};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 

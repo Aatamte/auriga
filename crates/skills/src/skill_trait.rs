@@ -1,4 +1,4 @@
-/// A skill that ships with the orchestrator binary.
+/// A skill that ships with Auriga binary.
 ///
 /// Each `Skill` is a static piece of content: a name, a one-line
 /// description, and a markdown body. The prompts page lists all
@@ -8,7 +8,7 @@
 /// Claude Code and Codex agents discover it on spawn.
 ///
 /// The trait is deliberately tiny — skills are content, not
-/// behaviour. There is no `execute` step inside the orchestrator;
+/// behaviour. There is no `execute` step inside Auriga;
 /// agents invoke the skill through their own skill systems once the
 /// file is on disk.
 pub trait Skill: Send + Sync {

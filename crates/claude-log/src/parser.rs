@@ -1,5 +1,5 @@
 use anyhow::Result;
-use orchestrator_core::{
+use auriga_core::{
     AssistantMeta, ContentBlock, ImageSource, ImageSourceType, MessageContent, MessageType,
     StopReason, SystemMeta, TokenUsage, ToolResultContent, TurnBuilder, TurnMeta, TurnRole,
     TurnStatus, UserMeta,

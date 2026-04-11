@@ -1,5 +1,5 @@
 use crate::{RenderContext, Widget, WidgetAction};
-use orchestrator_core::{FileEntry, ScrollDirection, Scrollable};
+use auriga_core::{FileEntry, ScrollDirection, Scrollable};
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
@@ -114,7 +114,7 @@ impl Widget for RecentActivityWidget {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use orchestrator_core::{AgentId, AgentStore, FileTree, FocusState, TraceStore, TurnStore};
+    use auriga_core::{AgentId, AgentStore, FileTree, FocusState, TraceStore, TurnStore};
     use ratatui::layout::Rect;
     use std::path::PathBuf;
 

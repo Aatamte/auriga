@@ -1,6 +1,6 @@
 use crate::{RenderContext, Widget, WidgetAction};
 use crossterm::event::{KeyCode, KeyEvent};
-use orchestrator_core::{AgentId, ScrollDirection};
+use auriga_core::{AgentId, ScrollDirection};
 use ratatui::layout::{Alignment, Rect};
 use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span};

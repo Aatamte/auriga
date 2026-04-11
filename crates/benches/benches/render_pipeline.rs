@@ -1,10 +1,10 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use orchestrator_core::{
+use auriga_core::{
     AgentId, AgentStore, FileEntry, FileTree, FocusState, ScrollDirection, Scrollable,
 };
-use orchestrator_grid::Grid;
+use auriga_grid::Grid;
 // grid_to_lines was replaced by render_term
-use orchestrator_widgets::{RenderContext, WidgetRegistry};
+use auriga_widgets::{RenderContext, WidgetRegistry};
 use ratatui::backend::TestBackend;
 use ratatui::layout::Rect;
 use ratatui::Terminal;
@@ -165,8 +165,8 @@ fn bench_full_render_cycle(c: &mut Criterion) {
 
                     let render_term_fn =
                         |_id: AgentId, _buf: &mut ratatui::buffer::Buffer, _area: Rect| {};
-                    let turns = orchestrator_core::TurnStore::new();
-                    let traces = orchestrator_core::TraceStore::new();
+                    let turns = auriga_core::TurnStore::new();
+                    let traces = auriga_core::TraceStore::new();
                     let ctx = RenderContext {
                         agents: &agents,
                         turns: &turns,
@@ -216,8 +216,8 @@ fn bench_full_render_cycle_many_agents(c: &mut Criterion) {
 
                     let render_term_fn =
                         |_id: AgentId, _buf: &mut ratatui::buffer::Buffer, _area: Rect| {};
-                    let turns = orchestrator_core::TurnStore::new();
-                    let traces = orchestrator_core::TraceStore::new();
+                    let turns = auriga_core::TurnStore::new();
+                    let traces = auriga_core::TraceStore::new();
                     let ctx = RenderContext {
                         agents: &agents,
                         turns: &turns,

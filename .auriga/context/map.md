@@ -4,7 +4,7 @@ description: Project architecture map. Modules, dependencies, entry points.
 last_updated: 2026-04-06
 ---
 
-# Agent Orchestrator
+# Auriga
 
 Native Rust TUI for managing multiple AI coding agents working in the same repository.
 
@@ -37,7 +37,7 @@ Native Rust TUI for managing multiple AI coding agents working in the same repos
 ## Entry Points
 
 - Main binary: crates/app/src/main.rs
-- Config init: crates/app/src/config.rs → .agent-orchestrator/config.json
+- Config init: crates/app/src/config.rs → .auriga/config.json
 - Agent spawn: crates/app/src/app.rs → App::spawn_agent()
 
 ## Dependency Direction

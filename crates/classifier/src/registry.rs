@@ -1,4 +1,4 @@
-use orchestrator_types::{
+use auriga_types::{
     ClassificationResult, ClassifierConfig, ClassifierStatus, ClassifierTrigger, Trace, Turn,
 };
 
@@ -133,7 +133,7 @@ impl Default for ClassifierRegistry {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use orchestrator_types::{
+    use auriga_types::{
         AgentId, ClassificationId, ClassifierTrigger, TokenUsage, Trace, TraceId, TraceStatus,
         TriggerPhase, TurnFilter,
     };

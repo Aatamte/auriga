@@ -35,7 +35,7 @@
         "Skill(loop)",
         "Skill(schedule)",
         "Skill(claude-api)",
-        "Skill(aorch-review)",
+        "Skill(auriga-review)",
         "Skill(update-config)",
         "Skill(keybindings-help)"
       ],

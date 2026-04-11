@@ -30,9 +30,9 @@ if [ -z "$TAG" ]; then
     exit 1
 fi
 
-URL="https://github.com/${REPO}/releases/download/${TAG}/aorch-${TARGET}.tar.gz"
+URL="https://github.com/${REPO}/releases/download/${TAG}/auriga-${TARGET}.tar.gz"
 
-echo "Installing aorch ${TAG} for ${TARGET}..."
+echo "Installing auriga ${TAG} for ${TARGET}..."
 echo "  from: ${URL}"
 echo "  to:   ${INSTALL_DIR}"
 
@@ -40,17 +40,17 @@ echo "  to:   ${INSTALL_DIR}"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
-curl -fsSL "$URL" -o "${TMP}/aorch.tar.gz"
-tar xzf "${TMP}/aorch.tar.gz" -C "$TMP"
+curl -fsSL "$URL" -o "${TMP}/auriga.tar.gz"
+tar xzf "${TMP}/auriga.tar.gz" -C "$TMP"
 
 # Install
 mkdir -p "$INSTALL_DIR"
-cp "${TMP}/aorch" "${INSTALL_DIR}/aorch"
-cp "${TMP}/orchestrator-app" "${INSTALL_DIR}/orchestrator-app"
-chmod +x "${INSTALL_DIR}/aorch" "${INSTALL_DIR}/orchestrator-app"
+cp "${TMP}/auriga" "${INSTALL_DIR}/auriga"
+cp "${TMP}/auriga-app" "${INSTALL_DIR}/auriga-app"
+chmod +x "${INSTALL_DIR}/auriga" "${INSTALL_DIR}/auriga-app"
 
 echo ""
-echo "Installed aorch ${TAG} to ${INSTALL_DIR}"
+echo "Installed auriga ${TAG} to ${INSTALL_DIR}"
 
 # Check PATH
 if ! echo "$PATH" | tr ':' '\n' | grep -q "^${INSTALL_DIR}$"; then

@@ -33,10 +33,10 @@ fn handle_initialize(req: &Request) -> Response {
                 "tools": {}
             },
             "serverInfo": {
-                "name": "orchestrator",
+                "name": "auriga",
                 "version": "0.1.0"
             },
-            "instructions": "You are one of several AI agents running inside an orchestrator TUI. The orchestrator manages multiple agents working in the same project. Your agent name is in the ORCHESTRATOR_AGENT_NAME environment variable — use it when sending messages so other agents know who you are. Use list_agents to discover other agents (it returns each agent's UUID, name, and status). Use send_message to communicate with them. Coordinate with other agents to avoid duplicate work and share findings. Use list_context to discover repository context documents that describe the codebase architecture, conventions, and patterns. Use get_context to read a specific document by name."
+            "instructions": "You are one of several AI agents running inside an Auriga. The auriga manages multiple agents working in the same project. Your agent name is in the AURIGA_AGENT_NAME environment variable — use it when sending messages so other agents know who you are. Use list_agents to discover other agents (it returns each agent's UUID, name, and status). Use send_message to communicate with them. Coordinate with other agents to avoid duplicate work and share findings. Use list_context to discover repository context documents that describe the codebase architecture, conventions, and patterns. Use get_context to read a specific document by name."
         }),
     )
 }
@@ -48,7 +48,7 @@ fn handle_tools_list(req: &Request) -> Response {
             "tools": [
                 {
                     "name": TOOL_LIST_AGENTS,
-                    "description": "List all agents currently running in the orchestrator. Returns each agent's UUID, name, and current status (Idle or Working). Use this to discover which agents are available before sending messages.",
+                    "description": "List all agents currently running in Auriga. Returns each agent's UUID, name, and current status (Idle or Working). Use this to discover which agents are available before sending messages.",
                     "inputSchema": {
                         "type": "object",
                         "properties": {},
@@ -63,7 +63,7 @@ fn handle_tools_list(req: &Request) -> Response {
                         "properties": {
                             "from_agent_name": {
                                 "type": "string",
-                                "description": "Your own agent name (from ORCHESTRATOR_AGENT_NAME env var). This is included in the message so the receiver knows who sent it."
+                                "description": "Your own agent name (from AURIGA_AGENT_NAME env var). This is included in the message so the receiver knows who sent it."
                             },
                             "to_agent_name": {
                                 "type": "string",
@@ -161,7 +161,7 @@ fn handle_tools_call(req: &Request, event_tx: &mpsc::Sender<McpEvent>) -> Respon
     };
 
     if event_tx.send(event).is_err() {
-        return tool_error(req, "Orchestrator is shutting down");
+        return tool_error(req, "Auriga is shutting down");
     }
 
     match response_rx.recv() {
@@ -176,7 +176,7 @@ fn handle_tools_call(req: &Request, event_tx: &mpsc::Sender<McpEvent>) -> Respon
         }
         Ok(McpResponse::ContextDoc(content)) => tool_success(req, &content),
         Ok(McpResponse::Error(msg)) => tool_error(req, &msg),
-        Err(_) => tool_error(req, "Failed to get response from orchestrator"),
+        Err(_) => tool_error(req, "Failed to get response from auriga"),
     }
 }
 
@@ -219,12 +219,12 @@ mod tests {
         let req = make_request("initialize", json!({}));
         let resp = handle_request(&req, &tx).unwrap();
         let result = resp.result.unwrap();
-        assert_eq!(result["serverInfo"]["name"], "orchestrator");
+        assert_eq!(result["serverInfo"]["name"], "auriga");
         assert!(result["capabilities"]["tools"].is_object());
         assert!(result["instructions"]
             .as_str()
             .unwrap()
-            .contains("ORCHESTRATOR_AGENT_NAME"));
+            .contains("AURIGA_AGENT_NAME"));
     }
 
     #[test]

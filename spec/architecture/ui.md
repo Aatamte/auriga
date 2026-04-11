@@ -44,7 +44,7 @@ Returned by `handle_click()`. The `App` receives these in `handle_widget_action(
 
 ## Grid Layout Schema
 
-`.agent-orchestrator/layout.json`:
+`.auriga/layout.json`:
 
 ```json
 {

@@ -3,12 +3,12 @@ use std::process::Command;
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 fn usage() {
-    eprintln!("aorch v{VERSION}");
+    eprintln!("auriga v{VERSION}");
     eprintln!();
-    eprintln!("Usage: aorch [command]");
+    eprintln!("Usage: auriga [command]");
     eprintln!();
     eprintln!("Commands:");
-    eprintln!("  (none)     Launch the orchestrator TUI");
+    eprintln!("  (none)     Launch the Auriga");
     eprintln!("  update     Update to the latest version");
     eprintln!("  version    Show version");
     eprintln!("  help       Show this help message");
@@ -20,7 +20,7 @@ fn update() -> anyhow::Result<()> {
     let status = self_update::backends::github::Update::configure()
         .repo_owner("Aatamte")
         .repo_name("auriga")
-        .bin_name("aorch")
+        .bin_name("auriga")
         .current_version(VERSION)
         .show_download_progress(true)
         .build()?
@@ -39,11 +39,11 @@ fn launch() -> anyhow::Result<()> {
     let bin = std::env::current_exe()?
         .parent()
         .ok_or_else(|| anyhow::anyhow!("cannot determine binary directory"))?
-        .join("orchestrator-app");
+        .join("auriga-app");
 
     if !bin.exists() {
         anyhow::bail!(
-            "orchestrator-app not found at {}. Run `cargo build` first.",
+            "auriga-app not found at {}. Run `cargo build` first.",
             bin.display()
         );
     }
@@ -60,7 +60,7 @@ fn main() -> anyhow::Result<()> {
         None => launch(),
         Some("update") => update(),
         Some("version" | "--version" | "-v") => {
-            println!("aorch v{VERSION}");
+            println!("auriga v{VERSION}");
             Ok(())
         }
         Some("help" | "--help" | "-h") => {

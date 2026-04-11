@@ -35,26 +35,26 @@ jobs:
       - uses: Swatinem/rust-cache@v2
 
       - name: Build release
-        run: cargo build --release --target ${{ matrix.target }} -p orchestrator-cli -p orchestrator-app
+        run: cargo build --release --target ${{ matrix.target }} -p auriga-cli -p auriga-app
 
       - name: Strip binary
         run: |
-          strip target/${{ matrix.target }}/release/aorch || true
-          strip target/${{ matrix.target }}/release/orchestrator-app || true
+          strip target/${{ matrix.target }}/release/auriga || true
+          strip target/${{ matrix.target }}/release/auriga-app || true
 
       - name: Package
         run: |
           mkdir -p dist
-          cp target/${{ matrix.target }}/release/aorch dist/
-          cp target/${{ matrix.target }}/release/orchestrator-app dist/
+          cp target/${{ matrix.target }}/release/auriga dist/
+          cp target/${{ matrix.target }}/release/auriga-app dist/
           cd dist
-          tar czf aorch-${{ matrix.suffix }}.tar.gz aorch orchestrator-app
+          tar czf auriga-${{ matrix.suffix }}.tar.gz auriga auriga-app
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: aorch-${{ matrix.suffix }}
-          path: dist/aorch-${{ matrix.suffix }}.tar.gz
+          name: auriga-${{ matrix.suffix }}
+          path: dist/auriga-${{ matrix.suffix }}.tar.gz
 
   release:
     name: Create Release

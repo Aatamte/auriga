@@ -2,9 +2,9 @@ use std::path::PathBuf;
 use std::sync::mpsc;
 use std::thread;
 
-use orchestrator_classifier::ClassificationResult;
-use orchestrator_core::{Trace, TraceId, Turn};
-use orchestrator_ml::SavedModel;
+use auriga_classifier::ClassificationResult;
+use auriga_core::{Trace, TraceId, Turn};
+use auriga_ml::SavedModel;
 
 use crate::db::Database;
 
@@ -159,7 +159,7 @@ pub fn start_storage_thread(db_path: PathBuf) -> anyhow::Result<StorageHandle> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use orchestrator_core::{AgentId, TokenUsage, TraceId, TraceStatus};
+    use auriga_core::{AgentId, TokenUsage, TraceId, TraceStatus};
     use rusqlite::Connection;
 
     fn sample_trace() -> Trace {

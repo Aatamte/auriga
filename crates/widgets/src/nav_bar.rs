@@ -1,4 +1,4 @@
-use orchestrator_core::Page;
+use auriga_core::Page;
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};

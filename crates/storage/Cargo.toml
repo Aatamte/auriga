@@ -1,12 +1,12 @@
 [package]
-name = "orchestrator-storage"
+name = "auriga-storage"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-orchestrator-core = { path = "../core" }
-orchestrator-classifier = { path = "../classifier" }
-orchestrator-ml = { path = "../ml" }
+auriga-core = { path = "../core" }
+auriga-classifier = { path = "../classifier" }
+auriga-ml = { path = "../ml" }
 rusqlite = { workspace = true }
 serde_json = { workspace = true }
 anyhow = { workspace = true }

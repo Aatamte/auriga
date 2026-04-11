@@ -2,10 +2,10 @@ use anyhow::Result;
 use linfa::prelude::*;
 use linfa_trees::DecisionTree;
 use ndarray::Array2;
-use orchestrator_classifier::{
+use auriga_classifier::{
     ClassificationId, ClassificationResult, Classifier, ClassifierTrigger,
 };
-use orchestrator_core::{Trace, Turn};
+use auriga_core::{Trace, Turn};
 use serde::{Deserialize, Serialize};
 
 use crate::features::extract_features;

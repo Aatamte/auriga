@@ -2,7 +2,7 @@
 
 ## Overview
 
-The orchestrator tracks which files each agent modifies, visualizes the file hierarchy with activity markers, and shows recent changes with line-level diff information. This gives operators a real-time view of what agents are doing to the codebase.
+The auriga tracks which files each agent modifies, visualizes the file hierarchy with activity markers, and shows recent changes with line-level diff information. This gives operators a real-time view of what agents are doing to the codebase.
 
 ## File Tree
 

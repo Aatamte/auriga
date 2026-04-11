@@ -1,4 +1,4 @@
-use orchestrator_types::{AgentId, FileActivity};
+use auriga_types::{AgentId, FileActivity};
 use std::path::PathBuf;
 
 #[derive(Debug)]

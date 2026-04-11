@@ -14,9 +14,9 @@ use crossterm::terminal::{
     disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen,
 };
 use crossterm::ExecutableCommand;
-use orchestrator_core::{AgentId, Page};
-use orchestrator_terminal::render_term;
-use orchestrator_widgets::{RenderContext, Widget};
+use auriga_core::{AgentId, Page};
+use auriga_terminal::render_term;
+use auriga_widgets::{RenderContext, Widget};
 use ratatui::backend::CrosstermBackend;
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::Terminal;
@@ -28,7 +28,7 @@ use std::time::Duration;
 fn write_mcp_json(port: u16) -> Result<()> {
     let config = serde_json::json!({
         "mcpServers": {
-            "orchestrator": {
+            "auriga": {
                 "type": "http",
                 "url": format!("http://127.0.0.1:{}", port),
                 "autoApprove": ["list_agents", "send_message", "list_context", "get_context"]
@@ -47,7 +47,7 @@ fn main() -> Result<()> {
     let enable_logging = false;
     let _log_guard = if enable_logging {
         let log_dir = config::dir_path();
-        let file_appender = tracing_appender::rolling::daily(&log_dir, "orchestrator.log");
+        let file_appender = tracing_appender::rolling::daily(&log_dir, "auriga.log");
         let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
         tracing_subscriber::fmt()
             .with_writer(non_blocking)
@@ -73,23 +73,23 @@ fn main() -> Result<()> {
     let (diff_tx, diff_rx) = threads::start_diff_thread();
 
     // MCP server
-    let mcp = orchestrator_mcp::start_mcp_server(config.mcp_port)?;
+    let mcp = auriga_mcp::start_mcp_server(config.mcp_port)?;
     if let Err(e) = write_mcp_json(mcp.port) {
         tracing::warn!(error = %e, "failed to write .mcp.json");
     }
 
     // Storage
-    let db_path = config::dir_path().join("orchestrator.db");
-    let storage = orchestrator_storage::start_storage_thread(db_path.clone())?;
-    let db_reader = orchestrator_storage::Database::open(&db_path)?;
+    let db_path = config::dir_path().join("auriga.db");
+    let storage = auriga_storage::start_storage_thread(db_path.clone())?;
+    let db_reader = auriga_storage::Database::open(&db_path)?;
 
     // Claude log watcher
     let claude_watcher = match (
-        orchestrator_claude_log::claude_project_dir(),
-        orchestrator_claude_log::claude_sessions_dir(),
+        auriga_claude_log::claude_project_dir(),
+        auriga_claude_log::claude_sessions_dir(),
     ) {
         (Some(project_dir), Some(sessions_dir)) => {
-            orchestrator_claude_log::start_claude_watcher(project_dir, sessions_dir).ok()
+            auriga_claude_log::start_claude_watcher(project_dir, sessions_dir).ok()
         }
         _ => None,
     };
@@ -101,15 +101,15 @@ fn main() -> Result<()> {
     // Each request carries the agent's provider name so we can dispatch
     // to the right backend (claude, codex, ...).
     let (gen_req_tx, gen_req_rx) = mpsc::channel::<(
-        orchestrator_core::AgentId,
+        auriga_core::AgentId,
         String,
-        orchestrator_agent::GenerateRequest,
+        auriga_agent::GenerateRequest,
     )>();
     let (gen_resp_tx, gen_resp_rx) = mpsc::channel();
     thread::spawn(move || {
         while let Ok((agent_id, provider_name, request)) = gen_req_rx.recv() {
-            let provider = orchestrator_agent::providers::resolve(&provider_name);
-            let result: Result<orchestrator_agent::GenerateResponse, String> =
+            let provider = auriga_agent::providers::resolve(&provider_name);
+            let result: Result<auriga_agent::GenerateResponse, String> =
                 match provider.generate(&request) {
                     Ok(resp) => Ok(resp),
                     Err(e) => Err(e.to_string()),
@@ -135,7 +135,7 @@ fn main() -> Result<()> {
         &config,
     );
 
-    // Load classifier configs from .agent-orchestrator/classifiers/
+    // Load classifier configs from .auriga/classifiers/
     if app::USE_CLASSIFIERS {
         app.load_classifier_configs();
     }

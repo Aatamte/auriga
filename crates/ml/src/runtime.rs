@@ -1,8 +1,8 @@
 use anyhow::Result;
 use linfa::prelude::*;
 use ndarray::Array2;
-use orchestrator_classifier::runtime::{ClassifierRuntime, RuntimePrediction};
-use orchestrator_core::{Trace, Turn};
+use auriga_classifier::runtime::{ClassifierRuntime, RuntimePrediction};
+use auriga_core::{Trace, Turn};
 use serde::Deserialize;
 
 use crate::features::extract_features;
@@ -60,7 +60,7 @@ impl ClassifierRuntime for MlRuntime {
 mod tests {
     use super::*;
     use crate::training::{train_decision_tree, TrainParams};
-    use orchestrator_core::{
+    use auriga_core::{
         AgentId, AssistantMeta, MessageContent, MessageType, StopReason, TokenUsage, Trace,
         TraceId, TraceStatus, TurnBuilder, TurnMeta, TurnRole, TurnStatus, TurnStore, UserMeta,
     };

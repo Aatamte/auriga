@@ -27,7 +27,7 @@
 
 ## Per-Crate Public API
 
-### core (`orchestrator-core`)
+### core (`auriga-core`)
 ```
 AgentId, AgentStore, AgentStatus
 TraceId, Trace, TraceStore, TraceStatus
@@ -39,29 +39,29 @@ FocusState, Page, Panel
 ScrollableState
 ```
 
-### grid (`orchestrator-grid`)
+### grid (`auriga-grid`)
 ```
 Grid, CellRect, WidgetId, Size
 ```
 
-### widgets (`orchestrator-widgets`)
+### widgets (`auriga-widgets`)
 ```
 Widget (trait), WidgetRegistry, WidgetAction, RenderContext, ScrollDirection
 DbMetadataView, QueryResultView, TableInfoView
 SettingsField, ClassifierStatusView, ClassificationResultView
 ```
 
-### terminal (`orchestrator-terminal`)
+### terminal (`auriga-terminal`)
 ```
 render_term(term, buf, area)
 ```
 
-### pty (`orchestrator-pty`)
+### pty (`auriga-pty`)
 ```
 PtyHandle, spawn_pty(cmd, size) -> PtyHandle
 ```
 
-### mcp (`orchestrator-mcp`)
+### mcp (`auriga-mcp`)
 ```
 start_mcp_server(port) -> McpServer
 McpServer { port, rx }
@@ -71,7 +71,7 @@ McpResponse { Agents(Vec<AgentInfo>), MessageSent, Error(String) }
 AgentInfo { id, name, status }
 ```
 
-### claude-log (`orchestrator-claude-log`)
+### claude-log (`auriga-claude-log`)
 ```
 start_claude_watcher(project_dir, sessions_dir) -> ClaudeWatchHandle
 ClaudeWatchHandle { rx }
@@ -82,7 +82,7 @@ claude_project_dir() -> Option<PathBuf>
 claude_sessions_dir() -> Option<PathBuf>
 ```
 
-### storage (`orchestrator-storage`)
+### storage (`auriga-storage`)
 ```
 Database { open(path), open_in_memory() }
   — save_trace, load_trace, list_traces, load_turns, list_agent_traces
@@ -95,7 +95,7 @@ start_storage_thread(path) -> StorageHandle
 DbMetadata, QueryResult, TableInfo
 ```
 
-### classifier (`orchestrator-classifier`)
+### classifier (`auriga-classifier`)
 ```
 Classifier (trait) { name, trigger, classify }
 ClassifierRegistry { register, set_enabled, run_incremental, run_on_complete, classifiers_info }
@@ -105,7 +105,7 @@ ClassificationId, ClassifierStatus
 CLASSIFICATIONS_TABLE_SQL
 ```
 
-### ml (`orchestrator-ml`)
+### ml (`auriga-ml`)
 ```
 DecisionTreeClassifier (implements Classifier)
 SavedModel { id, classifier_name, version, feature_names, model_data, accuracy }
@@ -117,7 +117,7 @@ FEATURE_NAMES: &[&str]  (14 features)
 ML_SCHEMA_SQL
 ```
 
-### skills (`orchestrator-skills`)
+### skills (`auriga-skills`)
 ```
 Skill (trait) { name, description, trigger, execute }
 SkillRegistry { register, execute, run_session_start, run_session_end, set_enabled, skills_info }
@@ -127,20 +127,20 @@ SkillResult { id, skill_name, agent_id, timestamp, success, payload }
 SkillId, SkillStatus
 ```
 
-### cli (`orchestrator-cli`)
+### cli (`auriga-cli`)
 ```
-Binary: aorch
+Binary: auriga
 Commands: (none) → launch, update, version, help
 Deps: anyhow, self_update
 ```
 
-### app (`orchestrator-app`)
+### app (`auriga-app`)
 ```
-Binary: orchestrator-app
+Binary: auriga-app
 Deps: all workspace crates
 ```
 
-### benches (`orchestrator-benches`)
+### benches (`auriga-benches`)
 ```
 Criterion benchmarks
 Deps: core, criterion

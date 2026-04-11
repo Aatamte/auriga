@@ -6,5 +6,5 @@ pub use code_review::CodeReviewSkill;
 pub use registry::SkillRegistry;
 pub use skill_trait::Skill;
 
-// Re-export types from orchestrator-types.
-pub use orchestrator_types::SkillStatus;
+// Re-export types from auriga-types.
+pub use auriga_types::SkillStatus;

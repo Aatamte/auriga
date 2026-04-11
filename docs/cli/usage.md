@@ -2,11 +2,11 @@
 
 ## Overview
 
-The `aorch` binary is the primary entry point for the orchestrator. It launches the TUI and provides self-update functionality. It is a thin wrapper — the actual TUI logic lives in the `orchestrator-app` binary, which `aorch` locates and launches.
+The `auriga` binary is the primary entry point for Auriga. It launches the TUI and provides self-update functionality. It is a thin wrapper — the actual TUI logic lives in the `auriga-app` binary, which `auriga` locates and launches.
 
 ## Commands
 
-Running `aorch` with no arguments launches the TUI. Additional commands:
+Running `auriga` with no arguments launches the TUI. Additional commands:
 
 - **update** — checks GitHub Releases for a newer version and replaces the binary if one is found
 - **version** — prints the current version
@@ -16,7 +16,7 @@ Running `aorch` with no arguments launches the TUI. Additional commands:
 
 Pre-built binaries are available via a shell script that detects the platform, downloads the correct release from GitHub, and installs to `~/.local/bin/`. The install location is configurable via an environment variable.
 
-Building from source requires Rust 1.75+ and produces two binaries (`aorch` and `orchestrator-app`) that must be placed in the same directory.
+Building from source requires Rust 1.75+ and produces two binaries (`auriga` and `auriga-app`) that must be placed in the same directory.
 
 ## Self-Update
 
@@ -24,7 +24,7 @@ The update mechanism uses GitHub Releases. It compares the current version again
 
 ## Configuration
 
-On first run, the TUI creates a `.agent-orchestrator/` directory in the current project root containing configuration (MCP port, disabled classifiers), grid layout, and the SQLite database.
+On first run, the TUI creates a `.auriga/` directory in the current project root containing configuration (MCP port, disabled classifiers), grid layout, and the SQLite database.
 
 ## Release Process
 

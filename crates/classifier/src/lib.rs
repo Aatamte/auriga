@@ -12,8 +12,8 @@ pub use runtime::{
 };
 pub use schema::CLASSIFICATIONS_TABLE_SQL;
 
-// Re-export types from orchestrator-types for backward compatibility.
-pub use orchestrator_types::{
+// Re-export types from auriga-types for backward compatibility.
+pub use auriga_types::{
     ClassificationId, ClassificationResult, ClassifierConfig, ClassifierStatus, ClassifierTrigger,
     ClassifierType, ConfigTrigger, LabelConfig, Notification, NotificationConfig, TriggerConfig,
     TriggerPhase, TurnFilter,

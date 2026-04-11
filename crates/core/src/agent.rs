@@ -1,4 +1,4 @@
-use orchestrator_types::{Agent, AgentId};
+use auriga_types::{Agent, AgentId};
 
 #[derive(Debug)]
 pub struct AgentStore {
@@ -54,7 +54,7 @@ impl Default for AgentStore {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use orchestrator_types::AgentStatus;
+    use auriga_types::AgentStatus;
 
     #[test]
     fn create_assigns_unique_ids() {

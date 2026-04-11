@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-BINARIES = ["aorch", "orchestrator-app"]
+BINARIES = ["auriga", "auriga-app"]
 
 
 def run(cmd: list[str], **kwargs) -> subprocess.CompletedProcess:

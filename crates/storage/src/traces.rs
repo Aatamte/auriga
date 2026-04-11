@@ -1,4 +1,4 @@
-use orchestrator_core::{
+use auriga_core::{
     AgentId, MessageContent, MessageType, TokenUsage, Trace, TraceId, TraceStatus, Turn, TurnId,
     TurnMeta, TurnRole, TurnStatus,
 };
@@ -253,7 +253,7 @@ fn str_to_turn_role(s: &str) -> TurnRole {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use orchestrator_core::{
+    use auriga_core::{
         AssistantMeta, MessageContent, StopReason, TurnBuilder, TurnMeta, TurnStore, UserMeta,
     };
     use serde_json::json;

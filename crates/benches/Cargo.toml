@@ -1,13 +1,13 @@
 [package]
-name = "orchestrator-benches"
+name = "auriga-benches"
 version = "0.1.0"
 edition = "2021"
 
 [dev-dependencies]
-orchestrator-core = { path = "../core" }
-orchestrator-grid = { path = "../grid" }
-orchestrator-widgets = { path = "../widgets" }
-orchestrator-terminal = { path = "../terminal" }
+auriga-core = { path = "../core" }
+auriga-grid = { path = "../grid" }
+auriga-widgets = { path = "../widgets" }
+auriga-terminal = { path = "../terminal" }
 ratatui = { workspace = true }
 alacritty_terminal = { workspace = true }
 criterion = { workspace = true }

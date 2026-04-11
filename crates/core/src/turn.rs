@@ -1,4 +1,4 @@
-use orchestrator_types::{AgentId, TokenUsage, Turn, TurnBuilder, TurnId, TurnMeta, TurnStatus};
+use auriga_types::{AgentId, TokenUsage, Turn, TurnBuilder, TurnId, TurnMeta, TurnStatus};
 
 // ---------------------------------------------------------------------------
 // TurnStore
@@ -120,7 +120,7 @@ impl Default for TurnStore {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use orchestrator_types::{
+    use auriga_types::{
         AgentId, AssistantMeta, ContentBlock, MessageContent, MessageType, StopReason, SystemMeta,
         TokenUsage, TurnBuilder, TurnId, TurnMeta, TurnRole, TurnStatus, UserMeta,
     };
@@ -246,7 +246,7 @@ mod tests {
     fn tool_result_with_string_content() {
         let block = ContentBlock::ToolResult {
             tool_use_id: "toolu_001".to_string(),
-            content: orchestrator_types::ToolResultContent::Text("file contents here".to_string()),
+            content: auriga_types::ToolResultContent::Text("file contents here".to_string()),
             is_error: false,
         };
         if let ContentBlock::ToolResult {
@@ -256,7 +256,7 @@ mod tests {
             assert!(!is_error);
             assert_eq!(
                 content,
-                &orchestrator_types::ToolResultContent::Text("file contents here".to_string())
+                &auriga_types::ToolResultContent::Text("file contents here".to_string())
             );
         } else {
             panic!("expected ToolResult block");
@@ -270,13 +270,13 @@ mod tests {
         }];
         let block = ContentBlock::ToolResult {
             tool_use_id: "toolu_002".to_string(),
-            content: orchestrator_types::ToolResultContent::Blocks(inner.clone()),
+            content: auriga_types::ToolResultContent::Blocks(inner.clone()),
             is_error: false,
         };
         if let ContentBlock::ToolResult { content, .. } = &block {
             assert_eq!(
                 content,
-                &orchestrator_types::ToolResultContent::Blocks(inner)
+                &auriga_types::ToolResultContent::Blocks(inner)
             );
         } else {
             panic!("expected ToolResult block");
@@ -287,7 +287,7 @@ mod tests {
     fn tool_result_error_flag() {
         let block = ContentBlock::ToolResult {
             tool_use_id: "toolu_003".to_string(),
-            content: orchestrator_types::ToolResultContent::Text("command failed".to_string()),
+            content: auriga_types::ToolResultContent::Text("command failed".to_string()),
             is_error: true,
         };
         if let ContentBlock::ToolResult { is_error, .. } = &block {
@@ -300,8 +300,8 @@ mod tests {
     #[test]
     fn image_block_stores_source() {
         let block = ContentBlock::Image {
-            source: orchestrator_types::ImageSource {
-                source_type: orchestrator_types::ImageSourceType::Base64,
+            source: auriga_types::ImageSource {
+                source_type: auriga_types::ImageSourceType::Base64,
                 media_type: "image/png".to_string(),
                 data: "iVBOR...".to_string(),
             },
@@ -309,7 +309,7 @@ mod tests {
         if let ContentBlock::Image { source } = &block {
             assert_eq!(
                 source.source_type,
-                orchestrator_types::ImageSourceType::Base64
+                auriga_types::ImageSourceType::Base64
             );
             assert_eq!(source.media_type, "image/png");
             assert_eq!(source.data, "iVBOR...");

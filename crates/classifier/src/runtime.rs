@@ -1,4 +1,4 @@
-use orchestrator_core::{Trace, Turn};
+use auriga_core::{Trace, Turn};
 use serde::{Deserialize, Serialize};
 use std::io::Write;
 use std::process::{Command, Stdio};
@@ -163,7 +163,7 @@ impl ClassifierRuntime for CliRuntime {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use orchestrator_core::{AgentId, TokenUsage, TraceId, TraceStatus};
+    use auriga_core::{AgentId, TokenUsage, TraceId, TraceStatus};
 
     fn test_trace() -> Trace {
         Trace {

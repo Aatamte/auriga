@@ -6,8 +6,8 @@ mod trace;
 mod turn;
 
 // Re-export all types from the types crate for backward compatibility.
-// Downstream crates can keep using `orchestrator_core::AgentId` etc.
-pub use orchestrator_types::*;
+// Downstream crates can keep using `auriga_core::AgentId` etc.
+pub use auriga_types::*;
 
 // State containers (stores) — these stay in core.
 pub use agent::AgentStore;

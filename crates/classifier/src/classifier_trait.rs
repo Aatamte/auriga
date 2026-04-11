@@ -1,4 +1,4 @@
-use orchestrator_types::{ClassificationResult, ClassifierConfig, ClassifierTrigger, Trace, Turn};
+use auriga_types::{ClassificationResult, ClassifierConfig, ClassifierTrigger, Trace, Turn};
 
 /// Trait that individual classifier implementations must satisfy.
 ///

@@ -1,6 +1,6 @@
 use std::ops::Range;
 
-use orchestrator_types::ScrollDirection;
+use auriga_types::ScrollDirection;
 
 #[derive(Debug)]
 pub struct Scrollable {

@@ -43,6 +43,6 @@ When implementing something new, find the closest existing pattern and follow it
 
 ## Adding a new Classifier
 
-1. Create JSON config in `.agent-orchestrator/classifiers/`
+1. Create JSON config in `.auriga/classifiers/`
 2. Follow schema in `agent-health.json`
 3. Loaded automatically by `App::load_classifier_configs()`

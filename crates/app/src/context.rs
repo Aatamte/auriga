@@ -34,7 +34,7 @@ pub struct DeepContext {
     pub last_updated: Option<String>,
 }
 
-/// Everything loaded from .agent-orchestrator/context/.
+/// Everything loaded from .auriga/context/.
 #[derive(Debug, Clone, Default)]
 pub struct ContextStore {
     pub map: ContextMap,

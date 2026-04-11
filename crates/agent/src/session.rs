@@ -1,4 +1,4 @@
-use orchestrator_types::{
+use auriga_types::{
     extract_tool_calls, AgentConfig, ContentBlock, GenerateRequest, GenerateResponse, Message,
     MessageContent, Role, SessionId, SessionStatus, TokenUsage, ToolCall, ToolDefinition,
     ToolOutput, ToolResultContent,
@@ -6,8 +6,8 @@ use orchestrator_types::{
 
 /// A managed agent conversation session.
 ///
-/// Tracks the conversation history and state for orchestrator-driven
-/// agent loops. The orchestrator creates a Session, sends messages,
+/// Tracks the conversation history and state for auriga-driven
+/// agent loops. The auriga creates a Session, sends messages,
 /// processes tool calls, and repeats until the model stops.
 ///
 /// This is NOT used for native CLI mode (where the CLI owns the loop).
@@ -153,7 +153,7 @@ impl Session {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use orchestrator_types::{AgentMode, StopReason};
+    use auriga_types::{AgentMode, StopReason};
 
     fn test_config() -> AgentConfig {
         AgentConfig {

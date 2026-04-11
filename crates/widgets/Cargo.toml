@@ -1,13 +1,13 @@
 [package]
-name = "orchestrator-widgets"
+name = "auriga-widgets"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-orchestrator-core = { path = "../core" }
-orchestrator-grid = { path = "../grid" }
-orchestrator-terminal = { path = "../terminal" }
-orchestrator-skills = { path = "../skills" }
+auriga-core = { path = "../core" }
+auriga-grid = { path = "../grid" }
+auriga-terminal = { path = "../terminal" }
+auriga-skills = { path = "../skills" }
 crossterm = { workspace = true }
 ratatui = { workspace = true }
 serde_json = { workspace = true }

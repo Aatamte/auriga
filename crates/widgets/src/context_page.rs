@@ -1,5 +1,5 @@
 use crate::{RenderContext, Widget, WidgetAction};
-use orchestrator_core::{ScrollDirection, Scrollable};
+use auriga_core::{ScrollDirection, Scrollable};
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};

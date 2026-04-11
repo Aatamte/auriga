@@ -151,7 +151,7 @@ pub struct ClaudeCliConfig {
 }
 
 /// A named, reusable Claude CLI configuration preset.
-/// Stored as JSON files in `.agent-orchestrator/presets/`.
+/// Stored as JSON files in `.auriga/presets/`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ClaudePreset {
     /// Display name (e.g. "sandbox", "review-agent").

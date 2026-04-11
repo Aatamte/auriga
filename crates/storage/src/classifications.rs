@@ -1,5 +1,5 @@
-use orchestrator_classifier::{ClassificationId, ClassificationResult};
-use orchestrator_core::TraceId;
+use auriga_classifier::{ClassificationId, ClassificationResult};
+use auriga_core::TraceId;
 use rusqlite::params;
 use uuid::Uuid;
 
@@ -120,15 +120,15 @@ mod tests {
     fn save_and_load_classification() {
         let db = Database::open_in_memory().unwrap();
         // Need a trace first (FK constraint)
-        let trace = orchestrator_core::Trace {
+        let trace = auriga_core::Trace {
             id: TraceId::from_u128(1),
-            agent_id: orchestrator_core::AgentId::from_u128(1),
+            agent_id: auriga_core::AgentId::from_u128(1),
             session_id: "s1".into(),
-            status: orchestrator_core::TraceStatus::Active,
+            status: auriga_core::TraceStatus::Active,
             started_at: "2026-01-01T00:00:00Z".into(),
             completed_at: None,
             turn_count: 0,
-            token_usage: orchestrator_core::TokenUsage {
+            token_usage: auriga_core::TokenUsage {
                 input_tokens: 0,
                 output_tokens: 0,
                 cache_creation_input_tokens: None,
@@ -167,15 +167,15 @@ mod tests {
     #[test]
     fn save_classification_upserts() {
         let db = Database::open_in_memory().unwrap();
-        let trace = orchestrator_core::Trace {
+        let trace = auriga_core::Trace {
             id: TraceId::from_u128(1),
-            agent_id: orchestrator_core::AgentId::from_u128(1),
+            agent_id: auriga_core::AgentId::from_u128(1),
             session_id: "s1".into(),
-            status: orchestrator_core::TraceStatus::Active,
+            status: auriga_core::TraceStatus::Active,
             started_at: "2026-01-01T00:00:00Z".into(),
             completed_at: None,
             turn_count: 0,
-            token_usage: orchestrator_core::TokenUsage {
+            token_usage: auriga_core::TokenUsage {
                 input_tokens: 0,
                 output_tokens: 0,
                 cache_creation_input_tokens: None,
@@ -215,15 +215,15 @@ mod tests {
     #[test]
     fn list_recent_classifications_ordered_by_timestamp_desc() {
         let db = Database::open_in_memory().unwrap();
-        let trace = orchestrator_core::Trace {
+        let trace = auriga_core::Trace {
             id: TraceId::from_u128(1),
-            agent_id: orchestrator_core::AgentId::from_u128(1),
+            agent_id: auriga_core::AgentId::from_u128(1),
             session_id: "s1".into(),
-            status: orchestrator_core::TraceStatus::Active,
+            status: auriga_core::TraceStatus::Active,
             started_at: "2026-01-01T00:00:00Z".into(),
             completed_at: None,
             turn_count: 0,
-            token_usage: orchestrator_core::TokenUsage {
+            token_usage: auriga_core::TokenUsage {
                 input_tokens: 0,
                 output_tokens: 0,
                 cache_creation_input_tokens: None,

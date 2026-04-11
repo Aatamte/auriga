@@ -109,7 +109,7 @@ Written to project root on startup, deleted on shutdown:
 ```json
 {
   "mcpServers": {
-    "orchestrator": {
+    "auriga": {
       "type": "http",
       "url": "http://127.0.0.1:<port>",
       "autoApprove": ["list_agents", "send_message"]

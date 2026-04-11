@@ -53,10 +53,10 @@ pub fn init(conn: &Connection) -> rusqlite::Result<()> {
         conn.execute_batch(SCHEMA_V1)?;
     }
     if version < 2 {
-        conn.execute_batch(orchestrator_classifier::CLASSIFICATIONS_TABLE_SQL)?;
+        conn.execute_batch(auriga_classifier::CLASSIFICATIONS_TABLE_SQL)?;
     }
     if version < 3 {
-        conn.execute_batch(orchestrator_ml::ML_SCHEMA_SQL)?;
+        conn.execute_batch(auriga_ml::ML_SCHEMA_SQL)?;
     }
     if version < 4 {
         // Add position column to training_labels (recreate table)

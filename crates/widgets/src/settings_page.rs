@@ -1,6 +1,6 @@
 use crate::{RenderContext, Widget, WidgetAction};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use orchestrator_core::ScrollDirection;
+use auriga_core::ScrollDirection;
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
@@ -520,7 +520,7 @@ mod tests {
             key: "display_mode",
             value: "native".to_string(),
             description: "Display mode",
-            kind: FieldKind::Toggle(vec!["native".into(), "orchestrator".into()]),
+            kind: FieldKind::Toggle(vec!["native".into(), "auriga".into()]),
             detail: vec![],
         }]);
         page
@@ -531,7 +531,7 @@ mod tests {
         let mut page = page_with_toggle();
         page.selected = Some(0);
         page.handle_key(make_key(KeyCode::Enter, KeyModifiers::NONE));
-        assert_eq!(page.fields[0].value, "orchestrator");
+        assert_eq!(page.fields[0].value, "auriga");
         assert!(!page.editing);
         assert!(page.dirty);
     }
@@ -541,7 +541,7 @@ mod tests {
         let mut page = page_with_toggle();
         page.selected = Some(0);
         page.handle_key(make_key(KeyCode::Enter, KeyModifiers::NONE));
-        assert_eq!(page.fields[0].value, "orchestrator");
+        assert_eq!(page.fields[0].value, "auriga");
         page.handle_key(make_key(KeyCode::Enter, KeyModifiers::NONE));
         assert_eq!(page.fields[0].value, "native");
     }

@@ -5,25 +5,25 @@ use alacritty_terminal::term::{Config as TermConfig, Term};
 use alacritty_terminal::vte;
 use anyhow::Result;
 use crossterm::event::Event;
-use orchestrator_agent::{
+use auriga_agent::{
     AgentConfig, AgentMode, GenerateRequest, GenerateResponse, Provider, Session,
 };
-use orchestrator_classifier::{
+use auriga_classifier::{
     ClassifierRegistry, ClassifierTrigger, ClassifierType, CliRuntime, CliRuntimeConfig,
     ConfigClassifier, LlmRuntimeStub,
 };
-use orchestrator_claude_log::{to_turn_builder, ClaudeWatchEvent, ClaudeWatchHandle};
-use orchestrator_core::{
+use auriga_claude_log::{to_turn_builder, ClaudeWatchEvent, ClaudeWatchHandle};
+use auriga_core::{
     AgentId, AgentStore, DisplayMode, FileTree, FocusState, TraceStore, TurnStore,
 };
-use orchestrator_grid::{CellRect, Grid};
-use orchestrator_mcp::doctor::{DoctorMcpServer, DoctorRequest, DoctorResponse};
-use orchestrator_mcp::{AgentInfo, ContextDocInfo, McpEvent, McpRequest, McpResponse};
-use orchestrator_ml::MlRuntime;
-use orchestrator_pty::PtyHandle;
-use orchestrator_skills::SkillRegistry;
-use orchestrator_storage::{Database, StorageHandle};
-use orchestrator_widgets::{
+use auriga_grid::{CellRect, Grid};
+use auriga_mcp::doctor::{DoctorMcpServer, DoctorRequest, DoctorResponse};
+use auriga_mcp::{AgentInfo, ContextDocInfo, McpEvent, McpRequest, McpResponse};
+use auriga_ml::MlRuntime;
+use auriga_pty::PtyHandle;
+use auriga_skills::SkillRegistry;
+use auriga_storage::{Database, StorageHandle};
+use auriga_widgets::{
     DbMetadataView, FieldKind, QueryResultView, SettingsField, TableInfoView, WidgetAction,
     WidgetRegistry,
 };
@@ -37,10 +37,10 @@ const USE_FS_LAYOUT: bool = false;
 pub const USE_CLASSIFIERS: bool = false;
 
 /// Pages hidden based on feature flags.
-pub fn hidden_pages() -> Vec<orchestrator_core::Page> {
+pub fn hidden_pages() -> Vec<auriga_core::Page> {
     let mut pages = Vec::new();
     if !USE_CLASSIFIERS {
-        pages.push(orchestrator_core::Page::Classifiers);
+        pages.push(auriga_core::Page::Classifiers);
     }
     pages
 }
@@ -55,7 +55,7 @@ pub struct App {
     pub db_path: PathBuf,
     pub focus: FocusState,
     pub file_tree: FileTree,
-    pub grid: orchestrator_grid::Grid,
+    pub grid: auriga_grid::Grid,
     pub widgets: WidgetRegistry,
     pub default_display_mode: DisplayMode,
     pub ptys: HashMap<AgentId, PtyHandle>,
@@ -154,13 +154,13 @@ impl App {
     /// Register built-in default skills.
     pub fn register_default_skills(&mut self) {
         self.skill_registry
-            .register(Box::new(orchestrator_skills::CodeReviewSkill));
+            .register(Box::new(auriga_skills::CodeReviewSkill));
     }
 
-    /// Load classifier configs from `.agent-orchestrator/classifiers/` and register them.
+    /// Load classifier configs from `.auriga/classifiers/` and register them.
     pub fn load_classifier_configs(&mut self) {
         let classifiers_dir = crate::config::dir_path().join("classifiers");
-        let configs = orchestrator_classifier::load_configs(&classifiers_dir);
+        let configs = auriga_classifier::load_configs(&classifiers_dir);
         for (_path, config) in configs {
             // Skip if already registered (avoids duplicates on reload)
             if self
@@ -175,7 +175,7 @@ impl App {
             let name = config.name.clone();
 
             let label_names: Vec<String> = config.labels.iter().map(|l| l.label.clone()).collect();
-            let runtime: Option<Box<dyn orchestrator_classifier::ClassifierRuntime>> =
+            let runtime: Option<Box<dyn auriga_classifier::ClassifierRuntime>> =
                 match config.classifier_type {
                     ClassifierType::Ml => self.resolve_ml_runtime(&name),
                     ClassifierType::Llm => Some(Box::new(LlmRuntimeStub)),
@@ -184,7 +184,7 @@ impl App {
                             .ok()
                             .map(|cfg| {
                                 Box::new(CliRuntime::new(cfg, label_names))
-                                    as Box<dyn orchestrator_classifier::ClassifierRuntime>
+                                    as Box<dyn auriga_classifier::ClassifierRuntime>
                             })
                     }
                 };
@@ -204,7 +204,7 @@ impl App {
     fn resolve_ml_runtime(
         &self,
         classifier_name: &str,
-    ) -> Option<Box<dyn orchestrator_classifier::ClassifierRuntime>> {
+    ) -> Option<Box<dyn auriga_classifier::ClassifierRuntime>> {
         let model = self.db_reader.load_latest_model(classifier_name).ok()??;
         let runtime = MlRuntime::from_saved_model(&model).ok()?;
         Some(Box::new(runtime))
@@ -212,7 +212,7 @@ impl App {
 
     pub fn pane_size(&self) -> (u16, u16) {
         for cell in &self.last_cell_rects {
-            if cell.widget == orchestrator_grid::WidgetId::AgentPane {
+            if cell.widget == auriga_grid::WidgetId::AgentPane {
                 let cols = cell.rect.width.saturating_sub(2).max(1);
                 let rows = cell.rect.height.saturating_sub(2).max(1);
                 return (cols, rows);
@@ -225,7 +225,7 @@ impl App {
     /// Build the default AgentConfig for a given provider, composing system
     /// prompt + repository context.
     pub fn default_agent_config(&self, provider_name: &str) -> AgentConfig {
-        use orchestrator_agent::SystemPromptBuilder;
+        use auriga_agent::SystemPromptBuilder;
 
         let prompts = load_system_prompts();
         let prompt_content = prompts
@@ -297,7 +297,7 @@ impl App {
                 let cwd = std::env::current_dir()?;
                 let (cols, rows) = self.pane_size();
 
-                let mut env: Vec<(&str, &str)> = vec![("ORCHESTRATOR_AGENT_NAME", &agent_name)];
+                let mut env: Vec<(&str, &str)> = vec![("AURIGA_AGENT_NAME", &agent_name)];
                 let env_owned: Vec<(String, String)> = spec.env.clone();
                 for (k, v) in &env_owned {
                     env.push((k.as_str(), v.as_str()));
@@ -359,7 +359,7 @@ impl App {
         let cwd = std::env::current_dir()?;
         let (cols, rows) = self.pane_size();
 
-        let env: Vec<(&str, &str)> = vec![("ORCHESTRATOR_AGENT_NAME", &agent_name)];
+        let env: Vec<(&str, &str)> = vec![("AURIGA_AGENT_NAME", &agent_name)];
         let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".into());
         let pty = PtyHandle::spawn_with_args(&shell, &["-i"], &cwd, cols, rows, &env)?;
 
@@ -498,13 +498,13 @@ impl App {
                 if let Some(agent) = self.agents.get_mut(id) {
                     if got_data {
                         agent.last_active_at = Some(now);
-                        agent.status = orchestrator_core::AgentStatus::Working;
+                        agent.status = auriga_core::AgentStatus::Working;
                     } else {
                         let still_active = agent
                             .last_active_at
                             .is_some_and(|t| now.duration_since(t) < DEBOUNCE);
                         if !still_active {
-                            agent.status = orchestrator_core::AgentStatus::Idle;
+                            agent.status = auriga_core::AgentStatus::Idle;
                         }
                     }
                 }
@@ -601,7 +601,7 @@ impl App {
                         trace.turn_count += 1;
                         // Accumulate token usage from assistant turns
                         if let Some(turn) = self.turns.get(turn_id) {
-                            if let orchestrator_core::TurnMeta::Assistant(ref meta) = turn.meta {
+                            if let auriga_core::TurnMeta::Assistant(ref meta) = turn.meta {
                                 if let Some(ref usage) = meta.usage {
                                     trace.token_usage.input_tokens += usage.input_tokens;
                                     trace.token_usage.output_tokens += usage.output_tokens;
@@ -804,13 +804,13 @@ impl App {
             return;
         };
 
-        let content = orchestrator_core::MessageContent::Text(text.clone());
+        let content = auriga_core::MessageContent::Text(text.clone());
         if let Some(request) = session.send_message(content.clone()) {
             // Insert user turn into TurnStore via bridge
             let now = chrono_now();
-            let turn_builder = orchestrator_agent::user_message_to_turn(
-                &orchestrator_agent::Message {
-                    role: orchestrator_agent::Role::User,
+            let turn_builder = auriga_agent::user_message_to_turn(
+                &auriga_agent::Message {
+                    role: auriga_agent::Role::User,
                     content,
                 },
                 &session.id,
@@ -849,7 +849,7 @@ impl App {
                     let now = chrono_now();
                     if let Some(session) = self.sessions.get(&agent_id) {
                         let turn_builder =
-                            orchestrator_agent::response_to_turn(&response, &session.id, &now);
+                            auriga_agent::response_to_turn(&response, &session.id, &now);
                         self.turns.insert(agent_id, turn_builder);
 
                         // Update trace
@@ -884,7 +884,7 @@ impl App {
         }
     }
 
-    pub fn hit_test(&self, col: u16, row: u16) -> Option<(orchestrator_grid::WidgetId, u16, u16)> {
+    pub fn hit_test(&self, col: u16, row: u16) -> Option<(auriga_grid::WidgetId, u16, u16)> {
         for cell in &self.last_cell_rects {
             let r = &cell.rect;
             if col >= r.x && col < r.x + r.width && row >= r.y && row < r.y + r.height {
@@ -929,7 +929,7 @@ impl App {
             WidgetAction::BackToGrid => {
                 self.widgets
                     .agent_pane
-                    .set_mode(orchestrator_widgets::agent_pane::PaneMode::Grid);
+                    .set_mode(auriga_widgets::agent_pane::PaneMode::Grid);
             }
             WidgetAction::NavigateTo(page) => {
                 self.focus.page = page;
@@ -1003,11 +1003,11 @@ impl App {
 
     pub fn toggle_pane_mode(&mut self) {
         let new_mode = match self.widgets.agent_pane.mode {
-            orchestrator_widgets::agent_pane::PaneMode::Grid => {
-                orchestrator_widgets::agent_pane::PaneMode::Focused
+            auriga_widgets::agent_pane::PaneMode::Grid => {
+                auriga_widgets::agent_pane::PaneMode::Focused
             }
-            orchestrator_widgets::agent_pane::PaneMode::Focused => {
-                orchestrator_widgets::agent_pane::PaneMode::Grid
+            auriga_widgets::agent_pane::PaneMode::Focused => {
+                auriga_widgets::agent_pane::PaneMode::Grid
             }
         };
         self.widgets.agent_pane.set_mode(new_mode);
@@ -1016,7 +1016,7 @@ impl App {
     pub fn start_doctor(&mut self) -> Result<()> {
         // Start doctor MCP server
         let classifiers_dir = crate::config::dir_path().join("classifiers");
-        let doctor = orchestrator_mcp::doctor::start_doctor_mcp(&self.db_path, classifiers_dir)?;
+        let doctor = auriga_mcp::doctor::start_doctor_mcp(&self.db_path, classifiers_dir)?;
 
         // Write temporary MCP config pointing to the doctor server
         let config_path = crate::config::dir_path().join("doctor-mcp.json");
@@ -1031,10 +1031,10 @@ impl App {
         });
         std::fs::write(&config_path, serde_json::to_string_pretty(&config)?)?;
 
-        // Write the /aorch-review slash command
+        // Write the /auriga-review slash command
         let commands_dir = std::env::current_dir()?.join(".claude/commands");
         std::fs::create_dir_all(&commands_dir)?;
-        let skill_path = commands_dir.join("aorch-review.md");
+        let skill_path = commands_dir.join("auriga-review.md");
         std::fs::write(
             &skill_path,
             concat!(
@@ -1061,7 +1061,7 @@ impl App {
             model: "claude-sonnet-4-20250514".into(),
             max_tokens: 8192,
             system_prompt: Some(concat!(
-                "You are the doctor agent for an AI agent orchestrator. ",
+                "You are the doctor agent for an Auriga. ",
                 "Your job is to analyze agent traces, turns, and classifier results ",
                 "to diagnose issues, identify patterns, and provide actionable insights.\n\n",
                 "You have access to these MCP tools:\n",
@@ -1072,7 +1072,7 @@ impl App {
                 "- label_trace: Assign a training label to a trace for a specific classifier\n",
                 "- list_training_labels: See labeled traces and label distribution for a classifier\n",
                 "- train_classifier: Train an ML classifier using labeled traces\n\n",
-                "You also have the /aorch-review skill which provides a step-by-step review workflow.\n\n",
+                "You also have the /auriga-review skill which provides a step-by-step review workflow.\n\n",
                 "Start by understanding what data is available, then analyze patterns ",
                 "like excessive token usage, repeated errors, classifier flags, or unusual behavior.",
             ).into()),
@@ -1140,7 +1140,7 @@ impl App {
     }
 
     pub fn refresh_classifier_panel(&mut self) {
-        use orchestrator_widgets::ClassifierStatusView;
+        use auriga_widgets::ClassifierStatusView;
 
         let statuses: Vec<ClassifierStatusView> = self
             .classifier_registry
@@ -1156,7 +1156,7 @@ impl App {
     }
 
     pub fn refresh_classifiers(&mut self) {
-        use orchestrator_widgets::{ClassifierDetailView, LabelView};
+        use auriga_widgets::{ClassifierDetailView, LabelView};
 
         let details: Vec<ClassifierDetailView> = self
             .classifier_registry
@@ -1191,29 +1191,29 @@ impl App {
         let map_view = if self.context_store.map.content.is_empty() {
             None
         } else {
-            Some(orchestrator_widgets::ContextMapView {
+            Some(auriga_widgets::ContextMapView {
                 content: self.context_store.map.content.clone(),
                 last_updated: self.context_store.map.last_updated.clone(),
             })
         };
         self.widgets.context_page.set_map(map_view);
 
-        let annotations: Vec<orchestrator_widgets::AnnotationView> = self
+        let annotations: Vec<auriga_widgets::AnnotationView> = self
             .context_store
             .annotations
             .iter()
-            .map(|(path, ann)| orchestrator_widgets::AnnotationView {
+            .map(|(path, ann)| auriga_widgets::AnnotationView {
                 path: path.clone(),
                 purpose: ann.purpose.clone(),
             })
             .collect();
         self.widgets.context_page.set_annotations(annotations);
 
-        let deep: Vec<orchestrator_widgets::DeepContextView> = self
+        let deep: Vec<auriga_widgets::DeepContextView> = self
             .context_store
             .deep_contexts
             .iter()
-            .map(|d| orchestrator_widgets::DeepContextView {
+            .map(|d| auriga_widgets::DeepContextView {
                 name: d.name.clone(),
                 description: d.description.clone(),
                 last_updated: d.last_updated.clone(),
@@ -1271,9 +1271,9 @@ impl App {
     }
 }
 
-/// Load system prompt JSON files from `.agent-orchestrator/prompts/`.
+/// Load system prompt JSON files from `.auriga/prompts/`.
 /// Each file: `{ "name": "...", "description": "...", "content": "...", "provider": "...", "enabled": true }`
-fn load_system_prompts() -> Vec<orchestrator_widgets::SystemPromptEntry> {
+fn load_system_prompts() -> Vec<auriga_widgets::SystemPromptEntry> {
     let prompts_dir = crate::config::dir_path().join("prompts");
     let Ok(entries) = std::fs::read_dir(&prompts_dir) else {
         return Vec::new();
@@ -1316,7 +1316,7 @@ fn load_system_prompts() -> Vec<orchestrator_widgets::SystemPromptEntry> {
             .and_then(|v| v.as_bool())
             .unwrap_or(true);
 
-        prompts.push(orchestrator_widgets::SystemPromptEntry {
+        prompts.push(auriga_widgets::SystemPromptEntry {
             name,
             description,
             content,
@@ -1329,7 +1329,7 @@ fn load_system_prompts() -> Vec<orchestrator_widgets::SystemPromptEntry> {
 }
 
 fn resolve_provider(name: &str) -> Box<dyn Provider> {
-    orchestrator_agent::providers::resolve(name)
+    auriga_agent::providers::resolve(name)
 }
 
 /// Quote a single argument for safe injection into an interactive shell.
@@ -1445,7 +1445,7 @@ fn config_to_fields(config: &crate::config::Config) -> Vec<SettingsField> {
 }
 
 fn preset_detail(
-    presets: &[orchestrator_core::ClaudePreset],
+    presets: &[auriga_core::ClaudePreset],
     active_name: &str,
 ) -> Vec<(String, String)> {
     let Some(preset) = presets.iter().find(|p| p.name == active_name) else {

@@ -1,4 +1,4 @@
-use orchestrator_core::{ContentBlock, MessageContent, MessageType, Trace, Turn};
+use auriga_core::{ContentBlock, MessageContent, MessageType, Trace, Turn};
 use std::collections::HashSet;
 
 pub const FEATURE_NAMES: &[&str] = &[
@@ -143,7 +143,7 @@ fn parse_duration(trace: &Trace) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use orchestrator_core::*;
+    use auriga_core::*;
 
     fn test_trace() -> Trace {
         Trace {

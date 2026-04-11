@@ -2,11 +2,11 @@
 
 ## Overview
 
-The orchestrator runs a Model Context Protocol server so that agents can discover each other and exchange messages. This enables multi-agent coordination without agents needing to know about each other in advance.
+The auriga runs a Model Context Protocol server so that agents can discover each other and exchange messages. This enables multi-agent coordination without agents needing to know about each other in advance.
 
 ## How It Works
 
-An HTTP server listens on a configurable port (default 7850) and accepts JSON-RPC 2.0 requests. When the orchestrator starts, it writes a `.mcp.json` file to the project root so that Claude Code agents automatically discover and connect to the server. The file is cleaned up on shutdown.
+An HTTP server listens on a configurable port (default 7850) and accepts JSON-RPC 2.0 requests. When Auriga starts, it writes a `.mcp.json` file to the project root so that Claude Code agents automatically discover and connect to the server. The file is cleaned up on shutdown.
 
 ## Capabilities
 

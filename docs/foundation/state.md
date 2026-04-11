@@ -12,8 +12,8 @@
 ### Persistent State
 Survives application restarts. Includes:
 - **SQLite database** — traces, turns, classifications, ML models, training labels. Managed by the storage thread. Schema versioned with migrations.
-- **Config file** — `.agent-orchestrator/config.json`. MCP port, disabled classifiers. Loaded on startup, saved on change.
-- **Layout file** — `.agent-orchestrator/layout.json`. Grid layout configuration. Loaded on startup.
+- **Config file** — `.auriga/config.json`. MCP port, disabled classifiers. Loaded on startup, saved on change.
+- **Layout file** — `.auriga/layout.json`. Grid layout configuration. Loaded on startup.
 
 Missing or corrupt files fall back to defaults — never crash.
 
