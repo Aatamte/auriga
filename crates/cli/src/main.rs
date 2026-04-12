@@ -36,10 +36,7 @@ fn update() -> anyhow::Result<()> {
 }
 
 fn launch() -> anyhow::Result<()> {
-    let bin = std::env::current_exe()?
-        .parent()
-        .ok_or_else(|| anyhow::anyhow!("cannot determine binary directory"))?
-        .join("auriga-app");
+    let bin = app_binary_path()?;
 
     if !bin.exists() {
         anyhow::bail!(
@@ -52,25 +49,115 @@ fn launch() -> anyhow::Result<()> {
     std::process::exit(status.code().unwrap_or(1));
 }
 
+#[derive(Debug, PartialEq)]
+enum Cmd<'a> {
+    Launch,
+    Update,
+    Version,
+    Help,
+    Unknown(&'a str),
+}
+
+fn resolve_command(args: &[String]) -> Cmd<'_> {
+    match args.get(1).map(|s| s.as_str()) {
+        None => Cmd::Launch,
+        Some("update") => Cmd::Update,
+        Some("version" | "--version" | "-v") => Cmd::Version,
+        Some("help" | "--help" | "-h") => Cmd::Help,
+        Some(other) => Cmd::Unknown(other),
+    }
+}
+
+fn app_binary_path() -> anyhow::Result<std::path::PathBuf> {
+    let exe = std::env::current_exe()?;
+    let dir = exe
+        .parent()
+        .ok_or_else(|| anyhow::anyhow!("cannot determine binary directory"))?;
+    Ok(dir.join("auriga-app"))
+}
+
 fn main() -> anyhow::Result<()> {
     let args: Vec<String> = std::env::args().collect();
-    let cmd = args.get(1).map(|s| s.as_str());
 
-    match cmd {
-        None => launch(),
-        Some("update") => update(),
-        Some("version" | "--version" | "-v") => {
+    match resolve_command(&args) {
+        Cmd::Launch => launch(),
+        Cmd::Update => update(),
+        Cmd::Version => {
             println!("auriga v{VERSION}");
             Ok(())
         }
-        Some("help" | "--help" | "-h") => {
+        Cmd::Help => {
             usage();
             Ok(())
         }
-        Some(other) => {
+        Cmd::Unknown(other) => {
             eprintln!("Unknown command: {other}");
             usage();
             std::process::exit(1);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn args(vals: &[&str]) -> Vec<String> {
+        vals.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn no_args_returns_launch() {
+        assert_eq!(resolve_command(&args(&["auriga"])), Cmd::Launch);
+    }
+
+    #[test]
+    fn update_arg_recognized() {
+        assert_eq!(resolve_command(&args(&["auriga", "update"])), Cmd::Update);
+    }
+
+    #[test]
+    fn version_variants() {
+        assert_eq!(resolve_command(&args(&["auriga", "version"])), Cmd::Version);
+        assert_eq!(
+            resolve_command(&args(&["auriga", "--version"])),
+            Cmd::Version
+        );
+        assert_eq!(resolve_command(&args(&["auriga", "-v"])), Cmd::Version);
+    }
+
+    #[test]
+    fn help_variants() {
+        assert_eq!(resolve_command(&args(&["auriga", "help"])), Cmd::Help);
+        assert_eq!(resolve_command(&args(&["auriga", "--help"])), Cmd::Help);
+        assert_eq!(resolve_command(&args(&["auriga", "-h"])), Cmd::Help);
+    }
+
+    #[test]
+    fn unknown_command() {
+        assert_eq!(
+            resolve_command(&args(&["auriga", "foo"])),
+            Cmd::Unknown("foo")
+        );
+    }
+
+    #[test]
+    fn version_is_semver() {
+        let parts: Vec<&str> = VERSION.split('.').collect();
+        assert_eq!(parts.len(), 3, "VERSION should be major.minor.patch");
+        for part in &parts {
+            assert!(
+                part.parse::<u32>().is_ok(),
+                "each version component should be numeric, got '{part}'"
+            );
+        }
+    }
+
+    #[test]
+    fn app_binary_is_sibling_of_exe() {
+        let path = app_binary_path().expect("should resolve binary path");
+        assert_eq!(path.file_name().unwrap(), "auriga-app");
+        let exe_dir = std::env::current_exe().unwrap();
+        assert_eq!(path.parent().unwrap(), exe_dir.parent().unwrap());
     }
 }
