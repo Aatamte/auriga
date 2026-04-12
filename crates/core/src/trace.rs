@@ -251,4 +251,30 @@ mod tests {
         assert_eq!(finished.len(), 2);
         assert_eq!(store.count(), 1);
     }
+
+    #[test]
+    fn many_traces_take_finished_at_scale() {
+        let mut store = TraceStore::new();
+        for i in 0..100 {
+            store.create(
+                agent(1),
+                format!("s{}", i),
+                "claude".into(),
+                "2026-01-01T00:00:00Z".into(),
+            );
+        }
+        assert_eq!(store.count(), 100);
+
+        // Complete every other trace
+        let ids: Vec<TraceId> = store.traces_for(agent(1)).iter().map(|t| t.id).collect();
+        for (i, id) in ids.iter().enumerate() {
+            if i % 2 == 0 {
+                store.complete(*id, "2026-01-01T01:00:00Z".into());
+            }
+        }
+
+        let finished = store.take_finished();
+        assert_eq!(finished.len(), 50);
+        assert_eq!(store.count(), 50);
+    }
 }

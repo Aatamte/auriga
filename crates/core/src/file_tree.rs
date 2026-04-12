@@ -413,6 +413,19 @@ mod tests {
     }
 
     #[test]
+    fn record_activity_many_files_tracks_all() {
+        let mut tree = FileTree::new(PathBuf::from("/project"));
+        tree.set_entries(vec![FileEntry::dir(PathBuf::from("/project/src"), 0)]);
+
+        for i in 0..1000 {
+            tree.record_activity(&PathBuf::from(format!("/project/src/file_{}.rs", i)), None);
+        }
+
+        // 1 dir + 1000 files
+        assert_eq!(tree.count(), 1001);
+    }
+
+    #[test]
     fn caches_invalidate_on_mutation() {
         let mut tree = sample_tree();
         // Prime caches

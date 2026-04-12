@@ -693,6 +693,18 @@ mod tests {
     }
 
     #[test]
+    fn many_turns_cleanup_at_scale() {
+        let mut store = TurnStore::new();
+        let id = agent(1);
+        for i in 0..1000 {
+            store.insert(id, user_builder(&format!("u-{}", i)));
+        }
+        assert_eq!(store.count(), 1000);
+        store.remove_agent_turns(id);
+        assert_eq!(store.count(), 0);
+    }
+
+    #[test]
     fn agent_token_usage_handles_no_turns() {
         let store = TurnStore::new();
         let total = store.agent_token_usage(agent(99));

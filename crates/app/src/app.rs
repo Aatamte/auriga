@@ -396,6 +396,15 @@ impl App {
         self.traces.remove_agent_traces(id);
         self.turns.remove_agent_turns(id);
 
+        // Clean up maps that reference this agent (prevents unbounded growth)
+        if let Some(agent) = self.agents.get(id) {
+            if let Some(pid) = agent.child_pid {
+                self.pid_map.remove(&pid);
+            }
+        }
+        self.session_map.retain(|_, &mut aid| aid != id);
+        self.sessions.remove(&id);
+
         self.ptys.remove(&id);
         self.terms.remove(&id);
         self.vte_parsers.remove(&id);
@@ -1645,6 +1654,181 @@ fn fields_to_config(values: &[(&str, &str)]) -> crate::config::Config {
         }
     }
     config
+}
+
+#[cfg(test)]
+mod kill_agent_tests {
+    use super::*;
+    use auriga_core::{
+        MessageContent, MessageType, TurnBuilder, TurnMeta, TurnRole, TurnStatus, UserMeta,
+    };
+    use serde_json::json;
+
+    fn test_app() -> App {
+        let (_input_tx, input_rx) = mpsc::channel::<Event>();
+        let (_file_tx, file_rx) = mpsc::channel::<FileEvent>();
+        let (diff_tx, diff_rx) = mpsc::channel::<DiffResult>();
+        let (real_diff_tx, _real_diff_rx) = mpsc::channel::<PathBuf>();
+        let (_mcp_tx, mcp_rx) = mpsc::channel::<McpEvent>();
+        let (gen_req_tx, _gen_req_rx) = mpsc::channel();
+        let (_gen_resp_tx, gen_resp_rx) = mpsc::channel();
+
+        let tmp = std::env::temp_dir().join(format!("auriga_test_{}.db", std::process::id()));
+        let storage =
+            auriga_storage::start_storage_thread(tmp.clone()).expect("storage thread failed");
+        let db_reader = auriga_storage::Database::open_in_memory().expect("in-memory db failed");
+        let config = crate::config::Config::default();
+
+        App::new(
+            input_rx,
+            file_rx,
+            real_diff_tx,
+            diff_rx,
+            mcp_rx,
+            storage,
+            db_reader,
+            tmp,
+            None,
+            gen_req_tx,
+            gen_resp_rx,
+            &config,
+        )
+    }
+
+    fn user_turn(uuid: &str) -> TurnBuilder {
+        TurnBuilder {
+            uuid: uuid.to_string(),
+            parent_uuid: None,
+            session_id: None,
+            timestamp: "2026-01-01T00:00:00Z".to_string(),
+            message_type: MessageType::User,
+            cwd: None,
+            git_branch: None,
+            role: TurnRole::User,
+            content: MessageContent::Text("hello".to_string()),
+            meta: TurnMeta::User(UserMeta {
+                is_meta: false,
+                is_compact_summary: false,
+                source_tool_assistant_uuid: None,
+            }),
+            status: TurnStatus::Complete,
+            extra: json!({}),
+        }
+    }
+
+    #[test]
+    fn kill_agent_cleans_session_map() {
+        let mut app = test_app();
+        let id = app.agents.create("claude");
+        app.session_map.insert("sess-1".into(), id);
+        app.session_map.insert("sess-2".into(), id);
+
+        app.kill_agent(id);
+
+        assert!(app.session_map.is_empty());
+    }
+
+    #[test]
+    fn kill_agent_cleans_pid_map() {
+        let mut app = test_app();
+        let id = app.agents.create("claude");
+        if let Some(agent) = app.agents.get_mut(id) {
+            agent.child_pid = Some(12345);
+        }
+        app.pid_map.insert(12345, id);
+
+        app.kill_agent(id);
+
+        assert!(app.pid_map.is_empty());
+    }
+
+    #[test]
+    fn kill_agent_cleans_sessions() {
+        let mut app = test_app();
+        let id = app.agents.create("claude");
+        let agent_config = auriga_agent::AgentConfig {
+            name: "test".into(),
+            provider: "claude".into(),
+            model: "test".into(),
+            max_tokens: 1024,
+            system_prompt: None,
+            temperature: None,
+            mode: auriga_agent::AgentMode::Generate,
+            provider_config: serde_json::json!({}),
+        };
+        app.sessions
+            .insert(id, Session::new(agent_config, Vec::new()));
+
+        app.kill_agent(id);
+
+        assert!(!app.sessions.contains_key(&id));
+    }
+
+    #[test]
+    fn kill_agent_cleans_turns_and_traces() {
+        let mut app = test_app();
+        let id = app.agents.create("claude");
+        app.turns.insert(id, user_turn("u1"));
+        app.traces.create(
+            id,
+            "s1".into(),
+            "claude".into(),
+            "2026-01-01T00:00:00Z".into(),
+        );
+
+        app.kill_agent(id);
+
+        assert_eq!(app.turns.count(), 0);
+        assert_eq!(app.traces.count(), 0);
+    }
+
+    #[test]
+    fn kill_agent_preserves_other_agents() {
+        let mut app = test_app();
+        let a = app.agents.create("claude");
+        let b = app.agents.create("claude");
+
+        app.session_map.insert("sess-a".into(), a);
+        app.session_map.insert("sess-b".into(), b);
+        app.pid_map.insert(111, a);
+        app.pid_map.insert(222, b);
+        if let Some(agent) = app.agents.get_mut(a) {
+            agent.child_pid = Some(111);
+        }
+        if let Some(agent) = app.agents.get_mut(b) {
+            agent.child_pid = Some(222);
+        }
+        app.turns.insert(a, user_turn("ua"));
+        app.turns.insert(b, user_turn("ub"));
+
+        app.kill_agent(a);
+
+        assert!(app.agents.get(b).is_some());
+        assert_eq!(app.session_map.len(), 1);
+        assert_eq!(*app.session_map.get("sess-b").unwrap(), b);
+        assert_eq!(app.pid_map.len(), 1);
+        assert_eq!(app.turns.count(), 1);
+    }
+
+    #[test]
+    fn spawn_kill_cycle_no_map_growth() {
+        let mut app = test_app();
+
+        for i in 0..100 {
+            let id = app.agents.create("claude");
+            let pid = 1000 + i;
+            if let Some(agent) = app.agents.get_mut(id) {
+                agent.child_pid = Some(pid);
+            }
+            app.pid_map.insert(pid, id);
+            app.session_map.insert(format!("sess-{}", i), id);
+            app.kill_agent(id);
+        }
+
+        assert!(app.pid_map.is_empty());
+        assert!(app.session_map.is_empty());
+        assert_eq!(app.agents.count(), 0);
+    }
 }
 
 /// Simple UTC timestamp without pulling in the chrono crate.
