@@ -1,6 +1,5 @@
 mod app;
 mod config;
-pub mod context;
 mod helpers;
 mod input;
 mod skills_storage;
@@ -31,7 +30,7 @@ fn write_mcp_json(port: u16) -> Result<()> {
             "auriga": {
                 "type": "http",
                 "url": format!("http://127.0.0.1:{}", port),
-                "autoApprove": ["list_agents", "send_message", "list_context", "get_context"]
+                "autoApprove": ["list_agents", "send_message"]
             }
         }
     });
@@ -132,20 +131,9 @@ fn main() -> Result<()> {
         &config,
     );
 
-    // Load classifier configs from .auriga/classifiers/
-    if app::USE_CLASSIFIERS {
-        app.load_classifier_configs();
-    }
-
     // Register built-in skills
     app.register_default_skills();
-
-    // Apply disabled classifiers from config
-    if app::USE_CLASSIFIERS {
-        for name in &config.disabled_classifiers {
-            app.classifier_registry.set_enabled(name, false);
-        }
-    }
+    app.refresh_settings();
 
     // Pre-compute layout rects so pane_size() works before first render
     {
@@ -162,6 +150,8 @@ fn main() -> Result<()> {
     }
 
     let mut last_pane_size: (u16, u16) = app.pane_size();
+    let mut last_agent_count: usize = app.agents.list().len();
+    let mut last_pane_mode = app.widgets.agent_pane.mode;
 
     while app.running {
         // Drain all channels non-blocking
@@ -173,26 +163,19 @@ fn main() -> Result<()> {
         app.poll_file_events();
         app.poll_diff_results();
         app.poll_mcp_requests();
-        app.poll_doctor_events();
         app.poll_claude_logs();
         app.poll_generate_responses();
         app.file_tree.refresh_caches();
 
         // Live-refresh pages when active
-        if app::USE_CLASSIFIERS && app.focus.page == Page::Home {
-            app.refresh_classifier_panel();
-        }
         if app.focus.page == Page::Database {
             app.refresh_database();
-        }
-        if app::USE_CLASSIFIERS && app.focus.page == Page::Classifiers {
-            app.refresh_classifiers();
         }
         if app.focus.page == Page::Prompts {
             app.refresh_prompts();
         }
-        if app.focus.page == Page::Context {
-            app.refresh_context();
+        if app.focus.page == Page::Settings {
+            app.refresh_settings();
         }
 
         // Render
@@ -209,16 +192,6 @@ fn main() -> Result<()> {
             .areas(area);
 
             let hidden = app::hidden_pages();
-
-            // Tab bar
-            app.widgets
-                .nav_bar
-                .render(frame, nav_area, current_page, &hidden);
-            app.last_nav_rect = nav_area;
-
-            // Keybinds footer
-            render_keybinds_footer(frame, hint_area);
-
             let terms = &app.terms;
             let term_renderer = |id: AgentId, buf: &mut ratatui::buffer::Buffer, area: Rect| {
                 if let Some(term) = terms.get(&id) {
@@ -234,6 +207,15 @@ fn main() -> Result<()> {
                 render_term: &term_renderer,
                 hidden_pages: &hidden,
             };
+
+            // Tab bar
+            app.widgets
+                .nav_bar
+                .render(frame, nav_area, current_page, &ctx);
+            app.last_nav_rect = nav_area;
+
+            // Keybinds footer
+            render_keybinds_footer(frame, hint_area);
 
             // Page content
             match current_page {
@@ -254,32 +236,25 @@ fn main() -> Result<()> {
                     app.widgets.database_page.render(frame, content_area, &ctx);
                     app.last_cell_rects = Vec::new();
                 }
-                Page::Classifiers => {
-                    app.widgets
-                        .classifiers_page
-                        .render(frame, content_area, &ctx);
-                    app.last_cell_rects = Vec::new();
-                }
                 Page::Prompts => {
                     app.widgets.prompts_page.render(frame, content_area, &ctx);
-                    app.last_cell_rects = Vec::new();
-                }
-                Page::Context => {
-                    app.widgets.context_page.render(frame, content_area, &ctx);
-                    app.last_cell_rects = Vec::new();
-                }
-                Page::Doctor => {
-                    app.widgets.doctor_page.render(frame, content_area, &ctx);
                     app.last_cell_rects = Vec::new();
                 }
             }
         })?;
 
-        // Resize PTYs if pane size changed
+        // Resize PTYs if pane size, mode, or agent count changed
         let current_pane_size = app.pane_size();
-        if current_pane_size != last_pane_size {
+        let current_agent_count = app.agents.list().len();
+        let current_pane_mode = app.widgets.agent_pane.mode;
+        if current_pane_size != last_pane_size
+            || current_agent_count != last_agent_count
+            || current_pane_mode != last_pane_mode
+        {
             app.resize_all_ptys();
             last_pane_size = current_pane_size;
+            last_agent_count = current_agent_count;
+            last_pane_mode = current_pane_mode;
         }
 
         // Small sleep to avoid busy-spinning when nothing is happening
@@ -313,7 +288,7 @@ fn render_keybinds_footer(frame: &mut ratatui::Frame, area: Rect) {
     let desc = Style::default().fg(Color::DarkGray);
     let sep = Span::styled("   ", desc);
 
-    let spans = vec![
+    let keybinds = vec![
         Span::raw(" "),
         Span::styled("^T", key),
         Span::raw(" "),
@@ -340,7 +315,17 @@ fn render_keybinds_footer(frame: &mut ratatui::Frame, area: Rect) {
         Span::styled("quit", desc),
     ];
 
-    frame.render_widget(Paragraph::new(Line::from(spans)), area);
+    let version = format!("v{} ", env!("CARGO_PKG_VERSION"));
+
+    let [left_area, right_area] =
+        Layout::horizontal([Constraint::Min(0), Constraint::Length(version.len() as u16)])
+            .areas(area);
+
+    frame.render_widget(Paragraph::new(Line::from(keybinds)), left_area);
+    frame.render_widget(
+        Paragraph::new(Span::styled(version, desc)),
+        right_area,
+    );
 }
 
 fn apply_font_size(out: &mut impl std::io::Write, size: u16) {
