@@ -109,7 +109,7 @@ dependencies = [
 
 [[package]]
 name = "auriga-app"
-version = "0.1.0"
+version = "0.1.5"
 dependencies = [
  "alacritty_terminal",
  "anyhow",
@@ -149,7 +149,7 @@ dependencies = [
 
 [[package]]
 name = "auriga-cli"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "anyhow",
  "self_update",
