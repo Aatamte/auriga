@@ -1,3 +1,4 @@
+use std::fs;
 use std::process::Command;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -14,24 +15,85 @@ fn usage() {
     eprintln!("  help       Show this help message");
 }
 
+fn target_arch() -> &'static str {
+    if cfg!(target_os = "macos") && cfg!(target_arch = "aarch64") {
+        "aarch64-apple-darwin"
+    } else if cfg!(target_os = "macos") && cfg!(target_arch = "x86_64") {
+        "x86_64-apple-darwin"
+    } else if cfg!(target_os = "linux") && cfg!(target_arch = "x86_64") {
+        "x86_64-unknown-linux-gnu"
+    } else {
+        "unknown"
+    }
+}
+
 fn update() -> anyhow::Result<()> {
     println!("Checking for updates...");
 
-    let status = self_update::backends::github::Update::configure()
+    let releases = self_update::backends::github::ReleaseList::configure()
         .repo_owner("Aatamte")
         .repo_name("auriga")
-        .bin_name("auriga")
-        .current_version(VERSION)
-        .show_download_progress(true)
         .build()?
-        .update()?;
+        .fetch()?;
 
-    if status.updated() {
-        println!("Updated to v{}", status.version());
-    } else {
+    let latest = releases
+        .first()
+        .ok_or_else(|| anyhow::anyhow!("No releases found"))?;
+    let latest_version = latest.version.trim_start_matches('v');
+
+    if latest_version == VERSION {
         println!("Already on latest version (v{VERSION}).");
+        return Ok(());
     }
 
+    println!("New version available: v{VERSION} -> v{latest_version}");
+
+    let arch = target_arch();
+    let asset_name = format!("auriga-{arch}.tar.gz");
+    let asset = latest
+        .assets
+        .iter()
+        .find(|a| a.name == asset_name)
+        .ok_or_else(|| anyhow::anyhow!("No asset found for {arch}"))?;
+
+    println!("Downloading {asset_name}...");
+
+    let tmp_dir = tempfile::tempdir()?;
+    let tmp_tarball = tmp_dir.path().join(&asset_name);
+
+    let mut tmp_file = fs::File::create(&tmp_tarball)?;
+    self_update::Download::from_url(&asset.download_url)
+        .set_header(reqwest::header::ACCEPT, "application/octet-stream".parse()?)
+        .download_to(&mut tmp_file)?;
+    drop(tmp_file);
+
+    println!("Extracting...");
+
+    self_update::Extract::from_source(&tmp_tarball)
+        .archive(self_update::ArchiveKind::Tar(Some(
+            self_update::Compression::Gz,
+        )))
+        .extract_into(tmp_dir.path())?;
+
+    let bin_dir = std::env::current_exe()?
+        .parent()
+        .ok_or_else(|| anyhow::anyhow!("Cannot determine binary directory"))?
+        .to_path_buf();
+
+    for bin in ["auriga", "auriga-app"] {
+        let src = tmp_dir.path().join(bin);
+        let dst = bin_dir.join(bin);
+        if src.exists() {
+            println!("Installing {bin}...");
+            let tmp_dst = bin_dir.join(format!("{bin}.new"));
+            fs::copy(&src, &tmp_dst)?;
+            self_update::Move::from_source(&tmp_dst)
+                .replace_using_temp(&dst)
+                .to_dest(&dst)?;
+        }
+    }
+
+    println!("Updated to v{latest_version}");
     Ok(())
 }
 

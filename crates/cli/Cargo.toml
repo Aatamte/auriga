@@ -10,3 +10,5 @@ path = "src/main.rs"
 [dependencies]
 anyhow = { workspace = true }
 self_update = { workspace = true }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
+tempfile = "3"
