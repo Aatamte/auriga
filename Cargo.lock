@@ -98,7 +98,7 @@ checksum = "1505bd5d3d116872e7271a6d4e16d81d0c8570876c8de68093a09ac269d8aac0"
 
 [[package]]
 name = "auriga-agent"
-version = "0.1.7"
+version = "0.1.8"
 dependencies = [
  "auriga-core",
  "auriga-types",
@@ -109,7 +109,7 @@ dependencies = [
 
 [[package]]
 name = "auriga-app"
-version = "0.1.7"
+version = "0.1.8"
 dependencies = [
  "alacritty_terminal",
  "anyhow",
@@ -137,7 +137,7 @@ dependencies = [
 
 [[package]]
 name = "auriga-claude-log"
-version = "0.1.7"
+version = "0.1.8"
 dependencies = [
  "anyhow",
  "auriga-core",
@@ -149,7 +149,7 @@ dependencies = [
 
 [[package]]
 name = "auriga-cli"
-version = "0.1.7"
+version = "0.1.8"
 dependencies = [
  "anyhow",
  "reqwest",
@@ -159,7 +159,7 @@ dependencies = [
 
 [[package]]
 name = "auriga-core"
-version = "0.1.7"
+version = "0.1.8"
 dependencies = [
  "auriga-types",
  "criterion",
@@ -170,7 +170,7 @@ dependencies = [
 
 [[package]]
 name = "auriga-grid"
-version = "0.1.7"
+version = "0.1.8"
 dependencies = [
  "criterion",
  "ratatui",
@@ -179,7 +179,7 @@ dependencies = [
 
 [[package]]
 name = "auriga-mcp"
-version = "0.1.7"
+version = "0.1.8"
 dependencies = [
  "anyhow",
  "auriga-core",
@@ -194,7 +194,7 @@ dependencies = [
 
 [[package]]
 name = "auriga-pty"
-version = "0.1.7"
+version = "0.1.8"
 dependencies = [
  "anyhow",
  "auriga-core",
@@ -203,7 +203,7 @@ dependencies = [
 
 [[package]]
 name = "auriga-skills"
-version = "0.1.7"
+version = "0.1.8"
 dependencies = [
  "anyhow",
  "auriga-core",
@@ -215,7 +215,7 @@ dependencies = [
 
 [[package]]
 name = "auriga-storage"
-version = "0.1.7"
+version = "0.1.8"
 dependencies = [
  "anyhow",
  "auriga-core",
@@ -228,7 +228,7 @@ dependencies = [
 
 [[package]]
 name = "auriga-terminal"
-version = "0.1.7"
+version = "0.1.8"
 dependencies = [
  "alacritty_terminal",
  "criterion",
@@ -237,7 +237,7 @@ dependencies = [
 
 [[package]]
 name = "auriga-types"
-version = "0.1.7"
+version = "0.1.8"
 dependencies = [
  "serde",
  "serde_json",
@@ -246,7 +246,7 @@ dependencies = [
 
 [[package]]
 name = "auriga-widgets"
-version = "0.1.7"
+version = "0.1.8"
 dependencies = [
  "auriga-core",
  "auriga-grid",

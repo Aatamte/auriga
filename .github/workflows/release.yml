@@ -50,6 +50,16 @@ jobs:
           cd dist
           tar czf auriga-${{ matrix.suffix }}.tar.gz auriga auriga-app
 
+      - name: Verify tarball contents
+        run: |
+          mkdir -p verify
+          tar xzf dist/auriga-${{ matrix.suffix }}.tar.gz -C verify
+          test -x verify/auriga || (echo "auriga not executable" && exit 1)
+          test -x verify/auriga-app || (echo "auriga-app not executable" && exit 1)
+          ./verify/auriga version
+          ./verify/auriga help
+          echo "Tarball verified: both binaries present and executable"
+
       - name: Upload artifact
         uses: actions/upload-artifact@v5
         with:

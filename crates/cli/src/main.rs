@@ -222,4 +222,19 @@ mod tests {
         let exe_dir = std::env::current_exe().unwrap();
         assert_eq!(path.parent().unwrap(), exe_dir.parent().unwrap());
     }
+
+    #[test]
+    fn target_arch_matches_release_naming() {
+        let arch = target_arch();
+        // Must match one of the release workflow targets
+        let valid = [
+            "aarch64-apple-darwin",
+            "x86_64-apple-darwin",
+            "x86_64-unknown-linux-gnu",
+        ];
+        assert!(
+            valid.contains(&arch) || arch == "unknown",
+            "target_arch() returned '{arch}' which doesn't match release targets"
+        );
+    }
 }
