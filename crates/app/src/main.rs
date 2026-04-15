@@ -38,8 +38,25 @@ fn write_mcp_json(port: u16) -> Result<()> {
     Ok(())
 }
 
+/// Restores terminal to normal state. Safe to call multiple times.
+fn restore_terminal() {
+    let mut out = stdout();
+    let _ = out.execute(DisableMouseCapture);
+    let _ = out.execute(LeaveAlternateScreen);
+    let _ = disable_raw_mode();
+}
+
+/// Guard that restores terminal state on drop.
+struct TerminalGuard;
+
+impl Drop for TerminalGuard {
+    fn drop(&mut self) {
+        restore_terminal();
+    }
+}
+
 fn main() -> Result<()> {
-    // Init project config directory
+    // Pre-terminal initialization (safe to fail without cleanup)
     let config = config::init()?;
 
     // Logging: disabled for now, enable when needed
@@ -57,13 +74,29 @@ fn main() -> Result<()> {
         None
     };
 
+    // Enter terminal raw mode
     enable_raw_mode()?;
     let mut out = stdout();
     out.execute(EnterAlternateScreen)?;
     out.execute(EnableMouseCapture)?;
 
+    // Guard ensures terminal is restored on any exit (error, panic, or normal)
+    let _terminal_guard = TerminalGuard;
+
+    // Run the app - any error will trigger guard cleanup
+    let result = run_app(&config);
+
+    // Normal shutdown cleanup (guard will also run, but restore_terminal is idempotent)
+    if let Err(e) = std::fs::remove_file(".mcp.json") {
+        tracing::debug!(error = %e, "failed to clean up .mcp.json");
+    }
+
+    result
+}
+
+fn run_app(config: &config::Config) -> Result<()> {
     // Apply font size
-    apply_font_size(&mut out, config.font_size);
+    apply_font_size(&mut stdout(), config.font_size);
 
     // Background threads
     let input_rx = threads::start_input_thread();
@@ -128,7 +161,7 @@ fn main() -> Result<()> {
         claude_watcher,
         gen_req_tx,
         gen_resp_rx,
-        &config,
+        config,
     );
 
     // Register built-in skills
@@ -265,15 +298,6 @@ fn main() -> Result<()> {
     app.flush_all_traces();
     app.storage.shutdown();
 
-    // Cleanup
-    if let Err(e) = std::fs::remove_file(".mcp.json") {
-        tracing::debug!(error = %e, "failed to clean up .mcp.json");
-    }
-
-    let mut out = stdout();
-    out.execute(DisableMouseCapture)?;
-    out.execute(LeaveAlternateScreen)?;
-    disable_raw_mode()?;
     Ok(())
 }
 
