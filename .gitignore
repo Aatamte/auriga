@@ -8,3 +8,4 @@ __pycache__
 .agent-orchestrator/orchestrator.db-journal
 .agent-orchestrator/orchestrator.db-wal
 .agent-orchestrator/orchestrator.db-shm
+.auriga/
