@@ -11,3 +11,10 @@ auriga-skills = { path = "../skills" }
 crossterm = { workspace = true }
 ratatui = { workspace = true }
 serde_json = { workspace = true }
+
+[dev-dependencies]
+criterion = { workspace = true }
+
+[[bench]]
+name = "widget_benches"
+harness = false

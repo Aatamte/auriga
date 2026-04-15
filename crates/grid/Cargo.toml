@@ -7,3 +7,10 @@ edition = "2021"
 serde = { workspace = true }
 ratatui = { workspace = true }
 
+[dev-dependencies]
+criterion = { workspace = true }
+
+[[bench]]
+name = "grid_benches"
+harness = false
+

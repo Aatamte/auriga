@@ -5,10 +5,11 @@ edition = "2021"
 
 [dependencies]
 auriga-core = { path = "../core" }
-auriga-classifier = { path = "../classifier" }
-auriga-ml = { path = "../ml" }
 rusqlite = { workspace = true }
 serde_json = { workspace = true }
 anyhow = { workspace = true }
 uuid = { workspace = true }
 tracing = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3"

@@ -13,9 +13,7 @@ auriga-pty = { path = "../pty" }
 auriga-claude-log = { path = "../claude-log" }
 auriga-mcp = { path = "../mcp" }
 auriga-storage = { path = "../storage" }
-auriga-classifier = { path = "../classifier" }
 auriga-skills = { path = "../skills" }
-auriga-ml = { path = "../ml" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 ratatui = { workspace = true }
@@ -27,3 +25,10 @@ ignore = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 tracing-appender = { workspace = true }
+
+[dev-dependencies]
+criterion = { workspace = true }
+
+[[bench]]
+name = "integration"
+harness = false

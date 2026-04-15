@@ -1,10 +1,7 @@
-use auriga_core::{
-    AgentId, AgentStore, FileEntry, FileTree, FocusState, ScrollDirection, Scrollable,
-};
+use auriga_core::{AgentId, AgentStore, FileEntry, FileTree, FocusState, TraceStore, TurnStore};
 use auriga_grid::Grid;
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
-// grid_to_lines was replaced by render_term
 use auriga_widgets::{RenderContext, WidgetRegistry};
+use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use ratatui::backend::TestBackend;
 use ratatui::layout::Rect;
 use ratatui::Terminal;
@@ -65,6 +62,7 @@ fn make_file_tree(n: usize) -> FileTree {
     tree
 }
 
+#[allow(dead_code)]
 fn make_term_with_output(rows: u16, cols: u16) -> Term<EventProxy> {
     let config = TermConfig {
         scrolling_history: 1000,
@@ -86,56 +84,22 @@ fn make_term_with_output(rows: u16, cols: u16) -> Term<EventProxy> {
     term
 }
 
-fn bench_grid_compute_rects(c: &mut Criterion) {
-    let grid = Grid::default();
-    let area = Rect::new(0, 0, 200, 60);
-
-    c.bench_function("grid_compute_rects", |b| {
-        b.iter(|| {
-            black_box(grid.compute_rects(black_box(area)));
-        });
-    });
-}
-
-// bench_grid_to_lines_small and bench_grid_to_lines_large removed — grid_to_lines was replaced by render_term
-
-fn bench_file_tree_visible_entries(c: &mut Criterion) {
-    let mut tree = make_file_tree(500);
-    tree.refresh_caches();
-
-    c.bench_function("file_tree_visible_500_entries", |b| {
-        b.iter(|| {
-            black_box(tree.visible_entries());
-        });
-    });
-}
-
-fn bench_file_tree_visible_large(c: &mut Criterion) {
-    let mut tree = make_file_tree(5000);
-    tree.refresh_caches();
-
-    c.bench_function("file_tree_visible_5000_entries", |b| {
-        b.iter(|| {
-            black_box(tree.visible_entries());
-        });
-    });
-}
-
-fn bench_scrollable_operations(c: &mut Criterion) {
-    c.bench_function("scrollable_1000_scroll_ops", |b| {
-        b.iter(|| {
-            let mut s = Scrollable::new();
-            s.set_item_count(1000);
-            s.set_visible_height(40);
-            for _ in 0..500 {
-                s.scroll(ScrollDirection::Down);
-            }
-            for _ in 0..500 {
-                s.scroll(ScrollDirection::Up);
-            }
-            black_box(&s);
-        });
-    });
+#[allow(dead_code)]
+fn make_app_state(
+    agent_count: usize,
+    file_count: usize,
+) -> (AgentStore, FocusState, FileTree, Vec<Term<EventProxy>>) {
+    let (agents, agent_ids) = make_agents(agent_count);
+    let mut focus = FocusState::new();
+    if let Some(&first) = agent_ids.first() {
+        focus.set_active_agent(first);
+    }
+    let mut file_tree = make_file_tree(file_count);
+    file_tree.refresh_caches();
+    let terms: Vec<Term<EventProxy>> = (0..agent_count)
+        .map(|_| make_term_with_output(40, 120))
+        .collect();
+    (agents, focus, file_tree, terms)
 }
 
 fn bench_full_render_cycle(c: &mut Criterion) {
@@ -150,8 +114,6 @@ fn bench_full_render_cycle(c: &mut Criterion) {
     let grid = Grid::default();
     let mut widgets = WidgetRegistry::new();
 
-    let terms: Vec<Term<EventProxy>> = (0..5).map(|_| make_term_with_output(40, 120)).collect();
-
     let area = Rect::new(0, 0, 200, 60);
 
     c.bench_function("full_render_cycle_5_agents", |b| {
@@ -165,8 +127,8 @@ fn bench_full_render_cycle(c: &mut Criterion) {
 
                     let render_term_fn =
                         |_id: AgentId, _buf: &mut ratatui::buffer::Buffer, _area: Rect| {};
-                    let turns = auriga_core::TurnStore::new();
-                    let traces = auriga_core::TraceStore::new();
+                    let turns = TurnStore::new();
+                    let traces = TraceStore::new();
                     let ctx = RenderContext {
                         agents: &agents,
                         turns: &turns,
@@ -201,8 +163,6 @@ fn bench_full_render_cycle_many_agents(c: &mut Criterion) {
     let grid = Grid::default();
     let mut widgets = WidgetRegistry::new();
 
-    let terms: Vec<Term<EventProxy>> = (0..20).map(|_| make_term_with_output(40, 120)).collect();
-
     let area = Rect::new(0, 0, 200, 60);
 
     c.bench_function("full_render_cycle_20_agents", |b| {
@@ -216,8 +176,98 @@ fn bench_full_render_cycle_many_agents(c: &mut Criterion) {
 
                     let render_term_fn =
                         |_id: AgentId, _buf: &mut ratatui::buffer::Buffer, _area: Rect| {};
-                    let turns = auriga_core::TurnStore::new();
-                    let traces = auriga_core::TraceStore::new();
+                    let turns = TurnStore::new();
+                    let traces = TraceStore::new();
+                    let ctx = RenderContext {
+                        agents: &agents,
+                        turns: &turns,
+                        traces: &traces,
+                        focus: &focus,
+                        file_tree: &file_tree,
+                        render_term: &render_term_fn,
+                        hidden_pages: &[],
+                    };
+
+                    for cell_rect in &cell_rects {
+                        let widget = widgets.get_mut(cell_rect.widget);
+                        widget.render(frame, cell_rect.rect, &ctx);
+                    }
+                })
+                .unwrap();
+
+            black_box(&terminal);
+        });
+    });
+}
+
+fn bench_full_event_to_render_cycle(c: &mut Criterion) {
+    let (agents, focus, file_tree, _terms) = make_app_state(6, 500);
+    let grid = Grid::default();
+    let mut widgets = WidgetRegistry::new();
+    let area = Rect::new(0, 0, 200, 60);
+
+    c.bench_function("full_event_to_render_6_agents_500_files", |b| {
+        b.iter(|| {
+            let cell_rects = grid.compute_rects(area);
+
+            for cell in &cell_rects {
+                let r = &cell.rect;
+                if 100 >= r.x && 100 < r.x + r.width && 30 >= r.y && 30 < r.y + r.height {
+                    black_box(&cell.widget);
+                    break;
+                }
+            }
+
+            let backend = TestBackend::new(200, 60);
+            let mut terminal = Terminal::new(backend).unwrap();
+
+            terminal
+                .draw(|frame| {
+                    let render_term_fn =
+                        |_id: AgentId, _buf: &mut ratatui::buffer::Buffer, _area: Rect| {};
+                    let turns = TurnStore::new();
+                    let traces = TraceStore::new();
+                    let ctx = RenderContext {
+                        agents: &agents,
+                        turns: &turns,
+                        traces: &traces,
+                        focus: &focus,
+                        file_tree: &file_tree,
+                        render_term: &render_term_fn,
+                        hidden_pages: &[],
+                    };
+
+                    for cell_rect in &cell_rects {
+                        let widget = widgets.get_mut(cell_rect.widget);
+                        widget.render(frame, cell_rect.rect, &ctx);
+                    }
+                })
+                .unwrap();
+
+            black_box(&terminal);
+        });
+    });
+}
+
+fn bench_worst_case_render(c: &mut Criterion) {
+    let (agents, focus, file_tree, _terms) = make_app_state(6, 5000);
+    let grid = Grid::default();
+    let mut widgets = WidgetRegistry::new();
+    let area = Rect::new(0, 0, 300, 80);
+
+    c.bench_function("worst_case_render_6_agents_5000_files_300x80", |b| {
+        b.iter(|| {
+            let backend = TestBackend::new(300, 80);
+            let mut terminal = Terminal::new(backend).unwrap();
+
+            terminal
+                .draw(|frame| {
+                    let cell_rects = grid.compute_rects(area);
+
+                    let render_term_fn =
+                        |_id: AgentId, _buf: &mut ratatui::buffer::Buffer, _area: Rect| {};
+                    let turns = TurnStore::new();
+                    let traces = TraceStore::new();
                     let ctx = RenderContext {
                         agents: &agents,
                         turns: &turns,
@@ -242,11 +292,9 @@ fn bench_full_render_cycle_many_agents(c: &mut Criterion) {
 
 criterion_group!(
     benches,
-    bench_grid_compute_rects,
-    bench_file_tree_visible_entries,
-    bench_file_tree_visible_large,
-    bench_scrollable_operations,
     bench_full_render_cycle,
     bench_full_render_cycle_many_agents,
+    bench_full_event_to_render_cycle,
+    bench_worst_case_render,
 );
 criterion_main!(benches);

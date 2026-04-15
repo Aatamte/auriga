@@ -11,13 +11,10 @@ members = [
     "crates/mcp",
     "crates/claude-log",
     "crates/storage",
-    "crates/classifier",
-    "crates/ml",
     "crates/skills",
     "crates/agent",
     "crates/cli",
     "crates/app",
-    "crates/benches",
 ]
 
 [workspace.dependencies]
