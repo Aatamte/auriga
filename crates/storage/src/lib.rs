@@ -1,6 +1,4 @@
-mod classifications;
 mod db;
-mod ml;
 mod query;
 mod schema;
 mod thread;

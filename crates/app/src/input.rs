@@ -2,7 +2,7 @@ use crate::app::App;
 use alacritty_terminal::grid::Scroll;
 use auriga_core::{Page, ScrollDirection};
 use auriga_grid::WidgetId;
-use auriga_widgets::{RenderContext, WidgetAction};
+use auriga_widgets::RenderContext;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
 use ratatui::layout::Rect;
 
@@ -75,33 +75,8 @@ pub fn handle_key(app: &mut App, key: KeyEvent) {
                 app.handle_widget_action(action);
             }
         }
-        Page::Classifiers => {
-            if let Some(action) = app.widgets.classifiers_page.handle_key(key) {
-                app.handle_widget_action(action);
-            }
-        }
         Page::Prompts => {
             if let Some(action) = app.widgets.prompts_page.handle_key(key) {
-                app.handle_widget_action(action);
-            }
-        }
-        Page::Context => {
-            // Placeholder — no key handling yet
-        }
-        Page::Doctor => {
-            if app.widgets.doctor_page.agent_id.is_some() {
-                // Forward keys to the doctor agent's PTY
-                let bytes = key_to_bytes(key);
-                if !bytes.is_empty() {
-                    if let Some(id) = app.widgets.doctor_page.agent_id {
-                        if let Some(pty) = app.ptys.get_mut(&id) {
-                            if let Err(e) = pty.write_input(&bytes) {
-                                tracing::warn!(error = %e, "doctor PTY write failed");
-                            }
-                        }
-                    }
-                }
-            } else if let Some(action) = app.widgets.doctor_page.handle_key(key) {
                 app.handle_widget_action(action);
             }
         }
@@ -110,15 +85,33 @@ pub fn handle_key(app: &mut App, key: KeyEvent) {
 
 pub fn handle_mouse(app: &mut App, mouse: MouseEvent) {
     if let MouseEventKind::Down(MouseButton::Left) = mouse.kind {
-        // Check tab bar clicks
+        // Check header clicks
         let nav = app.last_nav_rect;
         if mouse.row >= nav.y && mouse.row < nav.y + nav.height {
-            if let Some(page) =
+            let action = {
+                let terms = &app.terms;
+                let term_renderer =
+                    |id: auriga_core::AgentId, buf: &mut ratatui::buffer::Buffer, area: Rect| {
+                        if let Some(term) = terms.get(&id) {
+                            auriga_terminal::render_term(term, buf, area);
+                        }
+                    };
+                let hidden = crate::app::hidden_pages();
+                let ctx = RenderContext {
+                    agents: &app.agents,
+                    turns: &app.turns,
+                    traces: &app.traces,
+                    focus: &app.focus,
+                    file_tree: &app.file_tree,
+                    render_term: &term_renderer,
+                    hidden_pages: &hidden,
+                };
                 app.widgets
                     .nav_bar
-                    .handle_click(mouse.column, nav, &crate::app::hidden_pages())
-            {
-                app.handle_widget_action(WidgetAction::NavigateTo(page));
+                    .handle_click(mouse.column, nav, app.focus.page, &ctx)
+            };
+            if let Some(action) = action {
+                app.handle_widget_action(action);
             }
             return;
         }

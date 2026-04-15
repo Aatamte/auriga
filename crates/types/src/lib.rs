@@ -76,6 +76,6 @@ pub use session::{SessionId, SessionStatus};
 pub use provider::GenerateError;
 
 // --- Claude CLI ---
-pub use claude::{ClaudeCliConfig, ClaudePreset, EffortLevel, OutputFormat, PermissionMode};
+pub use claude::{ClaudeCliConfig, EffortLevel, OutputFormat, PermissionMode};
 pub use claude_settings::{AttributionConfig, ClaudeSettings, PermissionsConfig, WorktreeConfig};
 pub use codex::{ApprovalPolicy, CodexCliConfig, SandboxMode};

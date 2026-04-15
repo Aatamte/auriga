@@ -1,26 +1,21 @@
 use crate::helpers::walk_directory;
 use crate::input::{handle_key, handle_mouse};
 use crate::types::{DiffResult, EventProxy, FileEvent, TermSize};
+use alacritty_terminal::grid::Scroll;
 use alacritty_terminal::term::{Config as TermConfig, Term};
 use alacritty_terminal::vte;
 use anyhow::Result;
 use auriga_agent::{AgentConfig, AgentMode, GenerateRequest, GenerateResponse, Provider, Session};
-use auriga_classifier::{
-    ClassifierRegistry, ClassifierTrigger, ClassifierType, CliRuntime, CliRuntimeConfig,
-    ConfigClassifier, LlmRuntimeStub,
-};
 use auriga_claude_log::{to_turn_builder, ClaudeWatchEvent, ClaudeWatchHandle};
 use auriga_core::{AgentId, AgentStore, DisplayMode, FileTree, FocusState, TraceStore, TurnStore};
 use auriga_grid::{CellRect, Grid};
-use auriga_mcp::doctor::{DoctorMcpServer, DoctorRequest, DoctorResponse};
-use auriga_mcp::{AgentInfo, ContextDocInfo, McpEvent, McpRequest, McpResponse};
-use auriga_ml::MlRuntime;
+use auriga_mcp::{AgentInfo, McpEvent, McpRequest, McpResponse};
 use auriga_pty::PtyHandle;
 use auriga_skills::SkillRegistry;
 use auriga_storage::{Database, StorageHandle};
 use auriga_widgets::{
-    DbMetadataView, FieldKind, QueryResultView, SettingsField, TableInfoView, WidgetAction,
-    WidgetRegistry,
+    DbMetadataView, FieldKind, QueryResultView, SettingsField, SettingsSection, TableInfoView,
+    WidgetAction, WidgetRegistry,
 };
 use crossterm::event::Event;
 use ratatui::layout::Rect;
@@ -29,16 +24,10 @@ use std::path::PathBuf;
 
 /// When false, always use the built-in default layout instead of reading from config.json.
 const USE_FS_LAYOUT: bool = false;
-/// When false, skip loading, running, and displaying classifiers entirely.
-pub const USE_CLASSIFIERS: bool = false;
 
 /// Pages hidden based on feature flags.
 pub fn hidden_pages() -> Vec<auriga_core::Page> {
-    let mut pages = Vec::new();
-    if !USE_CLASSIFIERS {
-        pages.push(auriga_core::Page::Classifiers);
-    }
-    pages
+    Vec::new()
 }
 use std::sync::mpsc;
 
@@ -69,15 +58,11 @@ pub struct App {
     pub pid_map: HashMap<u32, AgentId>,
     pub last_cell_rects: Vec<CellRect>,
     pub last_nav_rect: Rect,
-    pub classifier_registry: ClassifierRegistry,
     pub skill_registry: SkillRegistry,
-    pub doctor_mcp: Option<DoctorMcpServer>,
     pub sessions: HashMap<AgentId, Session>,
     pub generate_tx: mpsc::Sender<(AgentId, String, GenerateRequest)>,
     pub generate_rx: mpsc::Receiver<(AgentId, Result<GenerateResponse, String>)>,
     pub running: bool,
-    pub context_injection: bool,
-    pub context_store: crate::context::ContextStore,
 }
 
 impl App {
@@ -101,7 +86,11 @@ impl App {
         file_tree.set_entries(walk_directory(&cwd));
 
         let mut widgets = WidgetRegistry::new();
-        widgets.settings_page.set_fields(config_to_fields(config));
+        widgets.settings_page.force_reload(
+            config_to_fields(config),
+            crate::config::file_path().display().to_string(),
+            crate::config::modified_at(),
+        );
 
         Self {
             agents: AgentStore::new(),
@@ -135,15 +124,11 @@ impl App {
             pid_map: HashMap::new(),
             last_cell_rects: Vec::new(),
             last_nav_rect: Rect::default(),
-            classifier_registry: ClassifierRegistry::new(),
             skill_registry: SkillRegistry::new(),
-            doctor_mcp: None,
             sessions: HashMap::new(),
             generate_tx,
             generate_rx,
             running: true,
-            context_injection: true,
-            context_store: crate::context::load(),
         }
     }
 
@@ -151,59 +136,6 @@ impl App {
     pub fn register_default_skills(&mut self) {
         self.skill_registry
             .register(Box::new(auriga_skills::CodeReviewSkill));
-    }
-
-    /// Load classifier configs from `.auriga/classifiers/` and register them.
-    pub fn load_classifier_configs(&mut self) {
-        let classifiers_dir = crate::config::dir_path().join("classifiers");
-        let configs = auriga_classifier::load_configs(&classifiers_dir);
-        for (_path, config) in configs {
-            // Skip if already registered (avoids duplicates on reload)
-            if self
-                .classifier_registry
-                .names()
-                .contains(&config.name.as_str())
-            {
-                continue;
-            }
-
-            let enabled = config.enabled;
-            let name = config.name.clone();
-
-            let label_names: Vec<String> = config.labels.iter().map(|l| l.label.clone()).collect();
-            let runtime: Option<Box<dyn auriga_classifier::ClassifierRuntime>> =
-                match config.classifier_type {
-                    ClassifierType::Ml => self.resolve_ml_runtime(&name),
-                    ClassifierType::Llm => Some(Box::new(LlmRuntimeStub)),
-                    ClassifierType::Cli => {
-                        serde_json::from_value::<CliRuntimeConfig>(config.runtime.clone())
-                            .ok()
-                            .map(|cfg| {
-                                Box::new(CliRuntime::new(cfg, label_names))
-                                    as Box<dyn auriga_classifier::ClassifierRuntime>
-                            })
-                    }
-                };
-
-            let mut classifier = ConfigClassifier::new(config);
-            if let Some(rt) = runtime {
-                classifier = classifier.with_runtime(rt);
-            }
-
-            self.classifier_registry.register(Box::new(classifier));
-            if !enabled {
-                self.classifier_registry.set_enabled(&name, false);
-            }
-        }
-    }
-
-    fn resolve_ml_runtime(
-        &self,
-        classifier_name: &str,
-    ) -> Option<Box<dyn auriga_classifier::ClassifierRuntime>> {
-        let model = self.db_reader.load_latest_model(classifier_name).ok()??;
-        let runtime = MlRuntime::from_saved_model(&model).ok()?;
-        Some(Box::new(runtime))
     }
 
     pub fn pane_size(&self) -> (u16, u16) {
@@ -218,8 +150,7 @@ impl App {
         (cols, rows)
     }
 
-    /// Build the default AgentConfig for a given provider, composing system
-    /// prompt + repository context.
+    /// Build the default AgentConfig for a given provider.
     pub fn default_agent_config(&self, provider_name: &str) -> AgentConfig {
         use auriga_agent::SystemPromptBuilder;
 
@@ -230,15 +161,9 @@ impl App {
             .map(|p| p.content.as_str())
             .unwrap_or("");
 
-        let mut builder = SystemPromptBuilder::new().section(prompt_content);
+        let system_prompt = SystemPromptBuilder::new().section(prompt_content).build();
 
-        if self.context_injection {
-            builder = builder.titled_section("Repository Context", &self.context_store.map.content);
-        }
-
-        let system_prompt = builder.build();
-
-        let provider_config = crate::config::load_active_provider_config();
+        let provider_config = crate::config::load_claude_config();
 
         AgentConfig {
             name: "agent".into(),
@@ -431,23 +356,6 @@ impl App {
                     .filter(|t| t.session_id.as_deref() == Some(&trace.session_id))
                     .cloned()
                     .collect();
-                if USE_CLASSIFIERS {
-                    let results = self.classifier_registry.run_on_complete(&trace, &turns);
-                    for result in &results {
-                        if let Some(ref notif) = result.notification {
-                            let xml = notif.format_xml(
-                                &result.classifier_name,
-                                &result.trace_id.0.to_string(),
-                            );
-                            if let Some(pty) = self.ptys.get_mut(&agent_id) {
-                                let _ = pty.write_input(xml.as_bytes());
-                            }
-                        }
-                    }
-                    for result in results {
-                        self.storage.save_classification(result);
-                    }
-                }
                 self.storage.save_trace(trace, turns);
             }
         }
@@ -472,12 +380,6 @@ impl App {
                 .filter(|t| t.session_id.as_deref() == Some(&trace.session_id))
                 .cloned()
                 .collect();
-            if USE_CLASSIFIERS {
-                let results = self.classifier_registry.run_on_complete(&trace, &turns);
-                for result in results {
-                    self.storage.save_classification(result);
-                }
-            }
             self.storage.save_trace(trace, turns);
         }
     }
@@ -630,7 +532,7 @@ impl App {
                         }
                     }
 
-                    // Immediately flush to SQLite + run incremental classifiers
+                    // Immediately flush to SQLite
                     if let Some(trace) = self.traces.active_trace(agent_id) {
                         let trace_clone = trace.clone();
                         let turns: Vec<_> = self
@@ -640,25 +542,6 @@ impl App {
                             .filter(|t| t.session_id.as_deref() == Some(&entry.session_id))
                             .cloned()
                             .collect();
-                        if USE_CLASSIFIERS {
-                            let results = self
-                                .classifier_registry
-                                .run_incremental(&trace_clone, &turns);
-                            for result in &results {
-                                if let Some(ref notif) = result.notification {
-                                    let xml = notif.format_xml(
-                                        &result.classifier_name,
-                                        &result.trace_id.0.to_string(),
-                                    );
-                                    if let Some(pty) = self.ptys.get_mut(&agent_id) {
-                                        let _ = pty.write_input(xml.as_bytes());
-                                    }
-                                }
-                            }
-                            for result in results {
-                                self.storage.save_classification(result);
-                            }
-                        }
                         self.storage.save_trace(trace_clone, turns);
                     }
                 }
@@ -719,55 +602,6 @@ impl App {
                         tracing::warn!("MCP response channel closed");
                     }
                 }
-                McpRequest::ListContext => {
-                    let mut docs: Vec<ContextDocInfo> = Vec::new();
-                    if !self.context_store.map.content.is_empty() {
-                        docs.push(ContextDocInfo {
-                            name: "map".to_string(),
-                            description: self
-                                .context_store
-                                .map
-                                .description
-                                .clone()
-                                .unwrap_or_default(),
-                            last_updated: self.context_store.map.last_updated.clone(),
-                        });
-                    }
-                    for dc in &self.context_store.deep_contexts {
-                        docs.push(ContextDocInfo {
-                            name: dc.name.clone(),
-                            description: dc.description.clone().unwrap_or_default(),
-                            last_updated: dc.last_updated.clone(),
-                        });
-                    }
-                    if event
-                        .response_tx
-                        .send(McpResponse::ContextList(docs))
-                        .is_err()
-                    {
-                        tracing::warn!("MCP response channel closed");
-                    }
-                }
-                McpRequest::GetContext { name } => {
-                    let resp = if name == "map" {
-                        if self.context_store.map.content.is_empty() {
-                            McpResponse::Error(format!("No context document named '{}'", name))
-                        } else {
-                            McpResponse::ContextDoc(self.context_store.map.content.clone())
-                        }
-                    } else {
-                        match self.context_store.deep_contexts.iter().find(|d| d.name == name) {
-                            Some(dc) => McpResponse::ContextDoc(dc.content.clone()),
-                            None => McpResponse::Error(format!(
-                                "No context document named '{}'. Use list_context to see available documents.",
-                                name
-                            )),
-                        }
-                    };
-                    if event.response_tx.send(resp).is_err() {
-                        tracing::warn!("MCP response channel closed");
-                    }
-                }
             }
         }
     }
@@ -788,10 +622,19 @@ impl App {
 
     pub fn write_to_active(&mut self, data: &[u8]) {
         if let Some(id) = self.focus.active_agent {
+            self.scroll_term_to_bottom(id);
             if let Some(pty) = self.ptys.get_mut(&id) {
                 if let Err(e) = pty.write_input(data) {
                     tracing::warn!(error = %e, "PTY write failed");
                 }
+            }
+        }
+    }
+
+    fn scroll_term_to_bottom(&mut self, id: AgentId) {
+        if let Some(term) = self.terms.get_mut(&id) {
+            if term.grid().display_offset() > 0 {
+                term.scroll_display(Scroll::Bottom);
             }
         }
     }
@@ -902,9 +745,54 @@ impl App {
     }
 
     pub fn resize_all_ptys(&mut self) {
-        let (cols, rows) = self.pane_size();
-        let ids: Vec<AgentId> = self.ptys.keys().copied().collect();
-        for id in ids {
+        use auriga_widgets::agent_pane::{compute_grid_rects, terminal_size_from_rect, PaneMode};
+
+        // Get the AgentPane rect
+        let pane_rect = self
+            .last_cell_rects
+            .iter()
+            .find(|c| c.widget == auriga_grid::WidgetId::AgentPane)
+            .map(|c| c.rect);
+
+        let Some(pane_rect) = pane_rect else {
+            return;
+        };
+
+        let agents = self.agents.list();
+        let agent_count = agents.len().min(6); // Grid mode shows max 6
+        let mode = self.widgets.agent_pane.mode;
+
+        // Compute per-agent terminal sizes
+        let agent_sizes: Vec<(AgentId, u16, u16)> = match mode {
+            PaneMode::Focused => {
+                // In focused mode, active agent gets full pane
+                if let Some(id) = self.focus.active_agent {
+                    let (cols, rows) = terminal_size_from_rect(pane_rect);
+                    vec![(id, cols, rows)]
+                } else {
+                    vec![]
+                }
+            }
+            PaneMode::Grid => {
+                if agent_count == 0 {
+                    vec![]
+                } else {
+                    let sub_rects = compute_grid_rects(pane_rect, agent_count);
+                    agents
+                        .iter()
+                        .take(agent_count)
+                        .zip(sub_rects.iter())
+                        .map(|(agent, rect)| {
+                            let (cols, rows) = terminal_size_from_rect(*rect);
+                            (agent.id, cols, rows)
+                        })
+                        .collect()
+                }
+            }
+        };
+
+        // Resize PTYs and terminals to their computed sizes
+        for (id, cols, rows) in agent_sizes {
             if let Some(pty) = self.ptys.get(&id) {
                 if let Err(e) = pty.resize(cols, rows) {
                     tracing::debug!(error = %e, "PTY resize failed");
@@ -956,14 +844,12 @@ impl App {
                 }
             }
             WidgetAction::SaveConfig => {
-                let config = fields_to_config(&self.widgets.settings_page.field_values());
+                let base = crate::config::load().unwrap_or_default();
+                let config = fields_to_config(base, &self.widgets.settings_page.field_values());
                 if crate::config::save(&config).is_ok() {
-                    self.widgets.settings_page.mark_saved();
-                }
-            }
-            WidgetAction::StartDoctor => {
-                if let Err(e) = self.start_doctor() {
-                    tracing::error!(error = %e, "failed to start doctor");
+                    self.widgets
+                        .settings_page
+                        .mark_saved(crate::config::modified_at());
                 }
             }
             WidgetAction::DownloadSkill(name) => {
@@ -982,27 +868,6 @@ impl App {
                 self.toggle_system_prompt(&name);
                 self.refresh_prompts();
             }
-            WidgetAction::ToggleContextInjection => {
-                self.context_injection = !self.context_injection;
-                self.widgets.prompts_page.context_enabled = self.context_injection;
-            }
-            WidgetAction::ToggleClassifier(name) => {
-                let currently_enabled = self.classifier_registry.is_enabled(&name);
-                self.classifier_registry
-                    .set_enabled(&name, !currently_enabled);
-                // Persist to config
-                let mut config = fields_to_config(&self.widgets.settings_page.field_values());
-                config.disabled_classifiers = self
-                    .classifier_registry
-                    .classifiers_info()
-                    .iter()
-                    .filter(|c| !c.enabled)
-                    .map(|c| c.name.clone())
-                    .collect();
-                if let Err(e) = crate::config::save(&config) {
-                    tracing::warn!(error = %e, "failed to save config");
-                }
-            }
         }
     }
 
@@ -1016,104 +881,6 @@ impl App {
             }
         };
         self.widgets.agent_pane.set_mode(new_mode);
-    }
-
-    pub fn start_doctor(&mut self) -> Result<()> {
-        // Start doctor MCP server
-        let classifiers_dir = crate::config::dir_path().join("classifiers");
-        let doctor = auriga_mcp::doctor::start_doctor_mcp(&self.db_path, classifiers_dir)?;
-
-        // Write temporary MCP config pointing to the doctor server
-        let config_path = crate::config::dir_path().join("doctor-mcp.json");
-        let config = serde_json::json!({
-            "mcpServers": {
-                "doctor": {
-                    "type": "http",
-                    "url": format!("http://127.0.0.1:{}", doctor.port),
-                    "autoApprove": ["list_traces", "get_trace", "list_classifiers", "create_classifier", "label_trace", "list_training_labels", "train_classifier"]
-                }
-            }
-        });
-        std::fs::write(&config_path, serde_json::to_string_pretty(&config)?)?;
-
-        // Write the /auriga-review slash command
-        let commands_dir = std::env::current_dir()?.join(".claude/commands");
-        std::fs::create_dir_all(&commands_dir)?;
-        let skill_path = commands_dir.join("auriga-review.md");
-        std::fs::write(
-            &skill_path,
-            concat!(
-                "Review agent traces and diagnose issues.\n\n",
-                "Steps:\n",
-                "1. Use list_classifiers to see what classifiers are registered and their status.\n",
-                "2. Use list_traces to get recent agent sessions.\n",
-                "3. For each trace with high token usage or many turns, use get_trace to inspect the full conversation.\n",
-                "4. Look for patterns: excessive token usage, repeated errors, looping behavior, classifier flags, aborted sessions.\n",
-                "5. Produce a diagnosis report with:\n",
-                "   - Summary of traces reviewed\n",
-                "   - Any anomalies or issues found\n",
-                "   - Token usage analysis (totals, averages, outliers)\n",
-                "   - Classifier findings\n",
-                "   - Recommendations\n",
-            ),
-        )?;
-
-        // Spawn doctor agent via AgentConfig
-        let config_str = config_path.to_string_lossy().to_string();
-        let doctor_config = AgentConfig {
-            name: "doctor".into(),
-            provider: "claude".into(),
-            model: "claude-sonnet-4-20250514".into(),
-            max_tokens: 8192,
-            system_prompt: Some(concat!(
-                "You are the doctor agent for an Auriga. ",
-                "Your job is to analyze agent traces, turns, and classifier results ",
-                "to diagnose issues, identify patterns, and provide actionable insights.\n\n",
-                "You have access to these MCP tools:\n",
-                "- list_traces: Browse recent agent sessions with token usage and status\n",
-                "- get_trace: Drill into a specific trace to see all turns and classifications\n",
-                "- list_classifiers: See registered classifiers and their status\n",
-                "- create_classifier: Create a new classifier config with name, trigger, type, and output labels\n",
-                "- label_trace: Assign a training label to a trace for a specific classifier\n",
-                "- list_training_labels: See labeled traces and label distribution for a classifier\n",
-                "- train_classifier: Train an ML classifier using labeled traces\n\n",
-                "You also have the /auriga-review skill which provides a step-by-step review workflow.\n\n",
-                "Start by understanding what data is available, then analyze patterns ",
-                "like excessive token usage, repeated errors, classifier flags, or unusual behavior.",
-            ).into()),
-            temperature: None,
-            mode: AgentMode::NativeCli,
-            provider_config: serde_json::json!({
-                "mcp_config_path": config_str,
-            }),
-        };
-        let id = self.spawn_agent(&doctor_config)?;
-
-        self.widgets.doctor_page.set_agent(id);
-        self.doctor_mcp = Some(doctor);
-
-        Ok(())
-    }
-
-    pub fn poll_doctor_events(&mut self) {
-        let Some(ref doctor) = self.doctor_mcp else {
-            return;
-        };
-        let events: Vec<_> = std::iter::from_fn(|| doctor.rx.try_recv().ok()).collect();
-        for event in events {
-            match event.request {
-                DoctorRequest::ListClassifiers => {
-                    let classifiers = self.classifier_registry.classifiers_info();
-                    let _ = event
-                        .response_tx
-                        .send(DoctorResponse::Classifiers(classifiers));
-                }
-                DoctorRequest::ReloadClassifiers => {
-                    self.load_classifier_configs();
-                    let _ = event.response_tx.send(DoctorResponse::Ok);
-                }
-            }
-        }
     }
 
     pub fn refresh_database(&mut self) {
@@ -1144,89 +911,6 @@ impl App {
         }
     }
 
-    pub fn refresh_classifier_panel(&mut self) {
-        use auriga_widgets::ClassifierStatusView;
-
-        let statuses: Vec<ClassifierStatusView> = self
-            .classifier_registry
-            .classifiers_info()
-            .into_iter()
-            .map(|c| ClassifierStatusView {
-                name: c.name,
-                trigger: c.trigger.display_name(),
-                enabled: c.enabled,
-            })
-            .collect();
-        self.widgets.classifier_panel.set_classifiers(statuses);
-    }
-
-    pub fn refresh_classifiers(&mut self) {
-        use auriga_widgets::{ClassifierDetailView, LabelView};
-
-        let details: Vec<ClassifierDetailView> = self
-            .classifier_registry
-            .classifiers_with_configs()
-            .into_iter()
-            .map(|(enabled, cfg)| {
-                let trigger: ClassifierTrigger = cfg.trigger.clone().into();
-                ClassifierDetailView {
-                    name: cfg.name.clone(),
-                    description: cfg.description.clone(),
-                    version: cfg.version.clone(),
-                    classifier_type: format!("{:?}", cfg.classifier_type).to_lowercase(),
-                    trigger: trigger.display_name(),
-                    enabled,
-                    labels: cfg
-                        .labels
-                        .iter()
-                        .map(|l| LabelView {
-                            label: l.label.clone(),
-                            notification: l.notification.message.clone(),
-                        })
-                        .collect(),
-                }
-            })
-            .collect();
-        self.widgets.classifiers_page.set_classifiers(details);
-    }
-
-    pub fn refresh_context(&mut self) {
-        self.context_store = crate::context::load();
-
-        let map_view = if self.context_store.map.content.is_empty() {
-            None
-        } else {
-            Some(auriga_widgets::ContextMapView {
-                content: self.context_store.map.content.clone(),
-                last_updated: self.context_store.map.last_updated.clone(),
-            })
-        };
-        self.widgets.context_page.set_map(map_view);
-
-        let annotations: Vec<auriga_widgets::AnnotationView> = self
-            .context_store
-            .annotations
-            .iter()
-            .map(|(path, ann)| auriga_widgets::AnnotationView {
-                path: path.clone(),
-                purpose: ann.purpose.clone(),
-            })
-            .collect();
-        self.widgets.context_page.set_annotations(annotations);
-
-        let deep: Vec<auriga_widgets::DeepContextView> = self
-            .context_store
-            .deep_contexts
-            .iter()
-            .map(|d| auriga_widgets::DeepContextView {
-                name: d.name.clone(),
-                description: d.description.clone(),
-                last_updated: d.last_updated.clone(),
-            })
-            .collect();
-        self.widgets.context_page.set_deep_contexts(deep);
-    }
-
     pub fn refresh_prompts(&mut self) {
         let root = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
         let is_downloaded = |name: &str| crate::skills_storage::is_downloaded(&root, name);
@@ -1235,8 +919,15 @@ impl App {
 
         let prompts = load_system_prompts();
         self.widgets.prompts_page.set_system_prompts(prompts);
+    }
 
-        self.widgets.prompts_page.context_enabled = self.context_injection;
+    pub fn refresh_settings(&mut self) {
+        let config = crate::config::load().unwrap_or_default();
+        self.widgets.settings_page.sync_from_disk(
+            config_to_fields(&config),
+            crate::config::file_path().display().to_string(),
+            crate::config::modified_at(),
+        );
     }
 
     /// Write the named skill's `SKILL.md` to the current project's
@@ -1390,9 +1081,74 @@ mod shell_quote_tests {
     }
 }
 
+const ON: &str = "on";
+const OFF: &str = "off";
+const EMPTY: &str = "—";
+const DEFAULT: &str = "default";
+
+fn toggle(options: &[&str]) -> FieldKind {
+    FieldKind::Toggle(options.iter().map(|s| (*s).to_string()).collect())
+}
+
+fn opt_str(value: &Option<String>) -> String {
+    value.clone().unwrap_or_else(|| EMPTY.into())
+}
+
+fn effort_str(value: &Option<auriga_core::EffortLevel>) -> String {
+    use auriga_core::EffortLevel;
+    match value {
+        None => EMPTY.into(),
+        Some(EffortLevel::Low) => "low".into(),
+        Some(EffortLevel::Medium) => "medium".into(),
+        Some(EffortLevel::High) => "high".into(),
+        Some(EffortLevel::Max) => "max".into(),
+    }
+}
+
+fn permission_mode_str(value: &Option<auriga_core::PermissionMode>) -> String {
+    use auriga_core::PermissionMode;
+    match value {
+        None => EMPTY.into(),
+        Some(PermissionMode::Default) => "default".into(),
+        Some(PermissionMode::AcceptEdits) => "acceptEdits".into(),
+        Some(PermissionMode::Plan) => "plan".into(),
+        Some(PermissionMode::Auto) => "auto".into(),
+        Some(PermissionMode::DontAsk) => "dontAsk".into(),
+        Some(PermissionMode::BypassPermissions) => "bypassPermissions".into(),
+    }
+}
+
+fn tri_bool_str(value: Option<bool>) -> String {
+    match value {
+        None => EMPTY.into(),
+        Some(true) => ON.into(),
+        Some(false) => OFF.into(),
+    }
+}
+
+fn bool_str(value: bool) -> String {
+    if value {
+        ON.into()
+    } else {
+        OFF.into()
+    }
+}
+
+fn budget_str(value: Option<f64>) -> String {
+    value.map(|v| v.to_string()).unwrap_or_else(|| EMPTY.into())
+}
+
+fn nested_setting(
+    config: &crate::config::Config,
+    field: fn(&auriga_core::ClaudeSettings) -> Option<bool>,
+) -> Option<bool> {
+    config.claude.settings.as_ref().and_then(field)
+}
+
 fn config_to_fields(config: &crate::config::Config) -> Vec<SettingsField> {
     vec![
         SettingsField {
+            section: SettingsSection::General,
             label: "MCP Port",
             key: "mcp_port",
             value: config.mcp_port.to_string(),
@@ -1401,30 +1157,7 @@ fn config_to_fields(config: &crate::config::Config) -> Vec<SettingsField> {
             detail: vec![],
         },
         SettingsField {
-            label: "Default Provider",
-            key: "default_provider",
-            value: config.default_provider.clone(),
-            description: "Provider for new agents (ctrl+n)",
-            kind: FieldKind::Toggle(vec!["claude".into()]),
-            detail: vec![],
-        },
-        SettingsField {
-            label: "Claude",
-            key: "claude_enabled",
-            value: config.claude_enabled.to_string(),
-            description: "Enable Claude provider",
-            kind: FieldKind::Toggle(vec!["true".into(), "false".into()]),
-            detail: vec![],
-        },
-        SettingsField {
-            label: "Display Mode",
-            key: "display_mode",
-            value: config.display_mode.clone(),
-            description: "native = our TUI, provider = provider's own TUI",
-            kind: FieldKind::Toggle(vec!["native".into(), "provider".into()]),
-            detail: vec![],
-        },
-        SettingsField {
+            section: SettingsSection::General,
             label: "Font Size",
             key: "font_size",
             value: config.font_size.to_string(),
@@ -1432,212 +1165,146 @@ fn config_to_fields(config: &crate::config::Config) -> Vec<SettingsField> {
             kind: FieldKind::Text,
             detail: vec![],
         },
-        {
-            let presets = crate::config::load_presets();
-            let options: Vec<String> = presets.iter().map(|p| p.name.clone()).collect();
-            let current = config.active_preset.clone();
-            let detail = preset_detail(&presets, &current);
-            SettingsField {
-                label: "Claude Preset",
-                key: "active_preset",
-                value: current,
-                description: "Active CLI preset for new Claude agents",
-                kind: FieldKind::Toggle(options),
-                detail,
-            }
+        SettingsField {
+            section: SettingsSection::ClaudeSettings,
+            label: "Model",
+            key: "claude.model",
+            value: opt_str(&config.claude.model),
+            description: "Model override for new Claude agents",
+            kind: toggle(&[EMPTY, "sonnet", "opus", "haiku"]),
+            detail: vec![],
+        },
+        SettingsField {
+            section: SettingsSection::ClaudeSettings,
+            label: "Thinking Effort",
+            key: "claude.effort",
+            value: effort_str(&config.claude.effort),
+            description: "Reasoning effort level",
+            kind: toggle(&[EMPTY, "low", "medium", "high", "max"]),
+            detail: vec![],
+        },
+        SettingsField {
+            section: SettingsSection::ClaudeSettings,
+            label: "Permission Mode",
+            key: "claude.permission_mode",
+            value: permission_mode_str(&config.claude.permission_mode),
+            description: "How the CLI asks for tool permissions",
+            kind: toggle(&[
+                DEFAULT,
+                "auto",
+                "acceptEdits",
+                "plan",
+                "dontAsk",
+                "bypassPermissions",
+            ]),
+            detail: vec![],
+        },
+        SettingsField {
+            section: SettingsSection::ClaudeSettings,
+            label: "Max Budget (USD)",
+            key: "claude.max_budget_usd",
+            value: budget_str(config.claude.max_budget_usd),
+            description: "Cap spend per session; empty disables",
+            kind: FieldKind::Text,
+            detail: vec![],
+        },
+        SettingsField {
+            section: SettingsSection::ClaudeSettings,
+            label: "Auto Memory",
+            key: "claude.settings.auto_memory_enabled",
+            value: tri_bool_str(nested_setting(config, |s| s.auto_memory_enabled)),
+            description: "Let Claude build persistent memory across sessions",
+            kind: toggle(&[DEFAULT, ON, OFF]),
+            detail: vec![],
+        },
+        SettingsField {
+            section: SettingsSection::ClaudeSettings,
+            label: "Include Git Instructions",
+            key: "claude.settings.include_git_instructions",
+            value: tri_bool_str(nested_setting(config, |s| s.include_git_instructions)),
+            description: "Inject git usage guidance into the system prompt",
+            kind: toggle(&[DEFAULT, ON, OFF]),
+            detail: vec![],
+        },
+        SettingsField {
+            section: SettingsSection::ClaudeSettings,
+            label: "Respect .gitignore",
+            key: "claude.settings.respect_gitignore",
+            value: tri_bool_str(nested_setting(config, |s| s.respect_gitignore)),
+            description: "Hide gitignored files from file tools",
+            kind: toggle(&[DEFAULT, ON, OFF]),
+            detail: vec![],
+        },
+        SettingsField {
+            section: SettingsSection::ClaudeSettings,
+            label: "Verbose Output",
+            key: "claude.verbose",
+            value: bool_str(config.claude.verbose),
+            description: "Pass --verbose to the CLI",
+            kind: toggle(&[ON, OFF]),
+            detail: vec![],
+        },
+        SettingsField {
+            section: SettingsSection::ClaudeSettings,
+            label: "Disable Slash Commands",
+            key: "claude.disable_slash_commands",
+            value: bool_str(config.claude.disable_slash_commands),
+            description: "Turn off all slash commands and skills",
+            kind: toggle(&[ON, OFF]),
+            detail: vec![],
         },
     ]
 }
 
-fn preset_detail(
-    presets: &[auriga_core::ClaudePreset],
-    active_name: &str,
-) -> Vec<(String, String)> {
-    let Some(preset) = presets.iter().find(|p| p.name == active_name) else {
-        return vec![];
-    };
-    let c = &preset.config;
-
-    fn opt(v: &Option<String>) -> String {
-        v.as_deref().unwrap_or("-").to_string()
+fn parse_effort(val: &str) -> Option<auriga_core::EffortLevel> {
+    use auriga_core::EffortLevel;
+    match val {
+        "low" => Some(EffortLevel::Low),
+        "medium" => Some(EffortLevel::Medium),
+        "high" => Some(EffortLevel::High),
+        "max" => Some(EffortLevel::Max),
+        _ => None,
     }
-    fn opt_fmt<T: std::fmt::Debug>(v: &Option<T>) -> String {
-        match v {
-            Some(val) => format!("{:?}", val).to_lowercase(),
-            None => "-".into(),
-        }
-    }
-    fn bool_str(v: bool) -> String {
-        if v { "true" } else { "false" }.into()
-    }
-    fn vec_str(v: &[String]) -> String {
-        if v.is_empty() {
-            "-".into()
-        } else {
-            v.join(", ")
-        }
-    }
-    fn env_str(v: &[(String, String)]) -> String {
-        if v.is_empty() {
-            "-".into()
-        } else {
-            v.iter()
-                .map(|(k, val)| format!("{}={}", k, val))
-                .collect::<Vec<_>>()
-                .join(", ")
-        }
-    }
-    fn budget_str(v: &Option<f64>) -> String {
-        match v {
-            Some(b) => format!("${:.2}", b),
-            None => "-".into(),
-        }
-    }
-
-    let mut detail = vec![
-        (
-            "Description".into(),
-            if preset.description.is_empty() {
-                "-".into()
-            } else {
-                preset.description.clone()
-            },
-        ),
-        // Session identity
-        ("Session Name".into(), opt(&c.name)),
-        ("Resume".into(), opt(&c.resume)),
-        ("Continue".into(), bool_str(c.continue_session)),
-        // Model & reasoning
-        ("Model".into(), opt(&c.model)),
-        ("Effort".into(), opt_fmt(&c.effort)),
-        // Permissions & safety
-        ("Permission Mode".into(), opt_fmt(&c.permission_mode)),
-        ("Allowed Tools".into(), vec_str(&c.allowed_tools)),
-        ("Disallowed Tools".into(), vec_str(&c.disallowed_tools)),
-        (
-            "Skip Permissions".into(),
-            bool_str(c.dangerously_skip_permissions),
-        ),
-        // Prompts & context
-        ("System Prompt".into(), opt(&c.system_prompt)),
-        ("Append Prompt".into(), opt(&c.append_system_prompt)),
-        ("Add Dirs".into(), vec_str(&c.add_dirs)),
-        // MCP
-        ("MCP Config".into(), opt(&c.mcp_config)),
-        ("Strict MCP".into(), bool_str(c.strict_mcp_config)),
-        // Output
-        ("Output Format".into(), opt_fmt(&c.output_format)),
-        ("Max Budget".into(), budget_str(&c.max_budget_usd)),
-        // Tools & agents
-        ("Tools".into(), vec_str(&c.tools)),
-        ("Agent".into(), opt(&c.agent)),
-        ("Agents JSON".into(), opt(&c.agents)),
-        // Worktree & environment
-        ("Worktree".into(), opt(&c.worktree)),
-        // Behavior flags
-        ("Bare".into(), bool_str(c.bare)),
-        ("Verbose".into(), bool_str(c.verbose)),
-        ("Disable Skills".into(), bool_str(c.disable_slash_commands)),
-        // Environment variables
-        ("Env Vars".into(), env_str(&c.env)),
-    ];
-
-    // Settings detail
-    if let Some(ref s) = c.settings {
-        detail.push(("".into(), "".into()));
-        detail.push(("--- Settings ---".into(), "".into()));
-
-        if let Some(ref perms) = s.permissions {
-            if !perms.allow.is_empty() {
-                detail.push(("Permissions Allow".into(), perms.allow.join(", ")));
-            }
-            if !perms.deny.is_empty() {
-                detail.push(("Permissions Deny".into(), perms.deny.join(", ")));
-            }
-            if !perms.ask.is_empty() {
-                detail.push(("Permissions Ask".into(), perms.ask.join(", ")));
-            }
-            if let Some(ref mode) = perms.default_mode {
-                detail.push(("Default Mode".into(), mode.clone()));
-            }
-            if let Some(ref dirs) = perms.additional_directories {
-                if !dirs.is_empty() {
-                    detail.push(("Additional Dirs".into(), dirs.join(", ")));
-                }
-            }
-        }
-        if let Some(ref model) = s.model {
-            detail.push(("Settings Model".into(), model.clone()));
-        }
-        if let Some(ref effort) = s.effort_level {
-            detail.push(("Settings Effort".into(), effort.clone()));
-        }
-        if let Some(v) = s.auto_memory_enabled {
-            detail.push(("Auto Memory".into(), bool_str(v)));
-        }
-        if let Some(v) = s.include_git_instructions {
-            detail.push(("Git Instructions".into(), bool_str(v)));
-        }
-        if let Some(v) = s.respect_gitignore {
-            detail.push(("Respect Gitignore".into(), bool_str(v)));
-        }
-        if let Some(ref lang) = s.language {
-            detail.push(("Language".into(), lang.clone()));
-        }
-        if let Some(ref style) = s.output_style {
-            detail.push(("Output Style".into(), style.clone()));
-        }
-        if let Some(v) = s.fast_mode {
-            detail.push(("Fast Mode".into(), bool_str(v)));
-        }
-        if let Some(v) = s.always_thinking_enabled {
-            detail.push(("Always Thinking".into(), bool_str(v)));
-        }
-        if let Some(v) = s.disable_all_hooks {
-            detail.push(("Disable Hooks".into(), bool_str(v)));
-        }
-        if let Some(v) = s.enable_all_project_mcp_servers {
-            detail.push(("Auto-approve MCP".into(), bool_str(v)));
-        }
-        if s.sandbox.is_some() {
-            detail.push(("Sandbox".into(), "configured".into()));
-        }
-        if s.hooks.is_some() {
-            detail.push(("Hooks".into(), "configured".into()));
-        }
-        if s.enabled_plugins.is_some() {
-            detail.push(("Plugins".into(), "configured".into()));
-        }
-        if let Some(ref attr) = s.attribution {
-            if let Some(ref c) = attr.commit {
-                detail.push(("Commit Attribution".into(), c.clone()));
-            }
-            if let Some(ref p) = attr.pr {
-                detail.push(("PR Attribution".into(), p.clone()));
-            }
-        }
-        if let Some(days) = s.cleanup_period_days {
-            detail.push(("Cleanup Days".into(), days.to_string()));
-        }
-    }
-
-    detail
 }
 
-fn fields_to_config(values: &[(&str, &str)]) -> crate::config::Config {
-    let mut config = crate::config::Config::default();
+fn parse_permission_mode(val: &str) -> Option<auriga_core::PermissionMode> {
+    use auriga_core::PermissionMode;
+    match val {
+        "default" => Some(PermissionMode::Default),
+        "acceptEdits" => Some(PermissionMode::AcceptEdits),
+        "plan" => Some(PermissionMode::Plan),
+        "auto" => Some(PermissionMode::Auto),
+        "dontAsk" => Some(PermissionMode::DontAsk),
+        "bypassPermissions" => Some(PermissionMode::BypassPermissions),
+        _ => None,
+    }
+}
+
+fn parse_tri_bool(val: &str) -> Option<bool> {
+    match val {
+        ON => Some(true),
+        OFF => Some(false),
+        _ => None,
+    }
+}
+
+fn ensure_settings(config: &mut crate::config::Config) -> &mut auriga_core::ClaudeSettings {
+    config
+        .claude
+        .settings
+        .get_or_insert_with(auriga_core::ClaudeSettings::default)
+}
+
+fn fields_to_config(
+    mut config: crate::config::Config,
+    values: &[(&str, &str)],
+) -> crate::config::Config {
     for &(key, val) in values {
         match key {
             "mcp_port" => {
                 if let Ok(port) = val.parse::<u16>() {
                     config.mcp_port = port;
                 }
-            }
-            "default_provider" => {
-                config.default_provider = val.to_string();
-            }
-            "claude_enabled" => {
-                config.claude_enabled = val == "true";
             }
             "display_mode" => {
                 config.display_mode = val.to_string();
@@ -1647,8 +1314,41 @@ fn fields_to_config(values: &[(&str, &str)]) -> crate::config::Config {
                     config.font_size = size.clamp(8, 32);
                 }
             }
-            "active_preset" => {
-                config.active_preset = val.to_string();
+            "claude.model" => {
+                config.claude.model = if val == DEFAULT {
+                    None
+                } else {
+                    Some(val.to_string())
+                };
+            }
+            "claude.effort" => {
+                config.claude.effort = parse_effort(val);
+            }
+            "claude.permission_mode" => {
+                config.claude.permission_mode = parse_permission_mode(val);
+            }
+            "claude.max_budget_usd" => {
+                let trimmed = val.trim();
+                config.claude.max_budget_usd = if trimmed.is_empty() || trimmed == EMPTY {
+                    None
+                } else {
+                    trimmed.parse::<f64>().ok()
+                };
+            }
+            "claude.settings.auto_memory_enabled" => {
+                ensure_settings(&mut config).auto_memory_enabled = parse_tri_bool(val);
+            }
+            "claude.settings.include_git_instructions" => {
+                ensure_settings(&mut config).include_git_instructions = parse_tri_bool(val);
+            }
+            "claude.settings.respect_gitignore" => {
+                ensure_settings(&mut config).respect_gitignore = parse_tri_bool(val);
+            }
+            "claude.verbose" => {
+                config.claude.verbose = val == ON;
+            }
+            "claude.disable_slash_commands" => {
+                config.claude.disable_slash_commands = val == ON;
             }
             _ => {}
         }
@@ -1659,6 +1359,9 @@ fn fields_to_config(values: &[(&str, &str)]) -> crate::config::Config {
 #[cfg(test)]
 mod kill_agent_tests {
     use super::*;
+    use alacritty_terminal::grid::Scroll;
+    use alacritty_terminal::term::{Config as TermConfig, Term};
+    use alacritty_terminal::vte::ansi::Processor;
     use auriga_core::{
         MessageContent, MessageType, TurnBuilder, TurnMeta, TurnRole, TurnStatus, UserMeta,
     };
@@ -1667,7 +1370,7 @@ mod kill_agent_tests {
     fn test_app() -> App {
         let (_input_tx, input_rx) = mpsc::channel::<Event>();
         let (_file_tx, file_rx) = mpsc::channel::<FileEvent>();
-        let (diff_tx, diff_rx) = mpsc::channel::<DiffResult>();
+        let (_diff_tx, diff_rx) = mpsc::channel::<DiffResult>();
         let (real_diff_tx, _real_diff_rx) = mpsc::channel::<PathBuf>();
         let (_mcp_tx, mcp_rx) = mpsc::channel::<McpEvent>();
         let (gen_req_tx, _gen_req_rx) = mpsc::channel();
@@ -1693,6 +1396,18 @@ mod kill_agent_tests {
             gen_resp_rx,
             &config,
         )
+    }
+
+    fn test_term() -> Term<EventProxy> {
+        let term_config = TermConfig {
+            scrolling_history: 10_000,
+            ..Default::default()
+        };
+        let term_size = TermSize {
+            cols: 80,
+            lines: 24,
+        };
+        Term::new(term_config, &term_size, EventProxy)
     }
 
     fn user_turn(uuid: &str) -> TurnBuilder {
@@ -1828,6 +1543,26 @@ mod kill_agent_tests {
         assert!(app.pid_map.is_empty());
         assert!(app.session_map.is_empty());
         assert_eq!(app.agents.count(), 0);
+    }
+
+    #[test]
+    fn write_to_active_snaps_scrolled_terminal_to_bottom() {
+        let mut app = test_app();
+        let id = app.agents.create("shell");
+        app.focus.set_active_agent(id);
+
+        let mut term = test_term();
+        let mut parser: Processor<alacritty_terminal::vte::ansi::StdSyncHandler> = Processor::new();
+        let history = (0..40).map(|i| format!("line-{i}\r\n")).collect::<String>();
+        parser.advance(&mut term, history.as_bytes());
+        term.scroll_display(Scroll::Top);
+        assert!(term.grid().display_offset() > 0);
+        app.terms.insert(id, term);
+
+        app.write_to_active(b"x");
+
+        let term = app.terms.get(&id).expect("term should exist");
+        assert_eq!(term.grid().display_offset(), 0);
     }
 }
 

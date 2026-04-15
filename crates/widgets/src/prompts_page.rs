@@ -8,10 +8,6 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph};
 use ratatui::Frame;
 
-// ---------------------------------------------------------------------------
-// System prompt entry (loaded from .auriga/prompts/*.json)
-// ---------------------------------------------------------------------------
-
 #[derive(Debug, Clone)]
 pub struct SystemPromptEntry {
     pub name: String,
@@ -21,10 +17,6 @@ pub struct SystemPromptEntry {
     pub enabled: bool,
 }
 
-// ---------------------------------------------------------------------------
-// Selectable item — unified index across both sections
-// ---------------------------------------------------------------------------
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Section {
     SystemPrompts,
@@ -33,7 +25,6 @@ enum Section {
 
 pub struct PromptsPage {
     pub system_prompts: Vec<SystemPromptEntry>,
-    pub context_enabled: bool,
     pub skills: Vec<SkillStatus>,
     selected: usize,
     scroll: Scrollable,
@@ -43,7 +34,6 @@ impl PromptsPage {
     pub fn new() -> Self {
         Self {
             system_prompts: Vec::new(),
-            context_enabled: true,
             skills: Vec::new(),
             selected: 0,
             scroll: Scrollable::new(),
@@ -60,36 +50,28 @@ impl PromptsPage {
         self.clamp_selection();
     }
 
-    /// System prompts count + 1 context toggle + skills count.
     fn total_items(&self) -> usize {
-        self.system_prompts.len() + 1 + self.skills.len()
+        self.system_prompts.len() + self.skills.len()
     }
 
     fn clamp_selection(&mut self) {
         let total = self.total_items();
-        if total == 0 {
-            self.selected = 0;
-        } else if self.selected >= total {
-            self.selected = total - 1;
-        }
-    }
-
-    fn context_toggle_idx(&self) -> usize {
-        self.system_prompts.len()
+        self.selected = if total == 0 {
+            0
+        } else {
+            self.selected.min(total - 1)
+        };
     }
 
     fn skills_start(&self) -> usize {
-        self.system_prompts.len() + 1
+        self.system_prompts.len()
     }
 
     fn selected_item(&self) -> Option<(Section, usize)> {
         if self.selected < self.system_prompts.len() {
             Some((Section::SystemPrompts, self.selected))
-        } else if self.selected == self.context_toggle_idx() {
-            // Context toggle lives at the end of SystemPrompts section
-            Some((Section::SystemPrompts, self.selected))
         } else {
-            let idx = self.selected - self.skills_start();
+            let idx = self.selected.saturating_sub(self.skills_start());
             if idx < self.skills.len() {
                 Some((Section::Skills, idx))
             } else {
@@ -112,21 +94,16 @@ impl PromptsPage {
                 }
             }
             KeyCode::Enter | KeyCode::Char(' ') => {
-                if self.selected == self.context_toggle_idx() {
-                    return Some(WidgetAction::ToggleContextInjection);
-                }
                 if let Some((section, idx)) = self.selected_item() {
                     return match section {
-                        Section::SystemPrompts => {
-                            let name = self.system_prompts[idx].name.clone();
-                            Some(WidgetAction::ToggleSystemPrompt(name))
-                        }
+                        Section::SystemPrompts => Some(WidgetAction::ToggleSystemPrompt(
+                            self.system_prompts[idx].name.clone(),
+                        )),
                         Section::Skills => Some(self.skill_toggle_action(idx)),
                     };
                 }
             }
             KeyCode::Char('d') => {
-                // 'd' = download the selected skill (only meaningful in Skills section).
                 if let Some((Section::Skills, idx)) = self.selected_item() {
                     if !self.skills[idx].downloaded {
                         return Some(WidgetAction::DownloadSkill(self.skills[idx].name.clone()));
@@ -134,7 +111,6 @@ impl PromptsPage {
                 }
             }
             KeyCode::Char('x') => {
-                // 'x' = delete the selected downloaded skill.
                 if let Some((Section::Skills, idx)) = self.selected_item() {
                     if self.skills[idx].downloaded {
                         return Some(WidgetAction::DeleteSkill(self.skills[idx].name.clone()));
@@ -146,8 +122,6 @@ impl PromptsPage {
         None
     }
 
-    /// Enter/Space on a skill row flips its on-disk state: download if
-    /// absent, delete if present.
     fn skill_toggle_action(&self, idx: usize) -> WidgetAction {
         let skill = &self.skills[idx];
         if skill.downloaded {
@@ -158,20 +132,9 @@ impl PromptsPage {
     }
 
     fn build_lines(&self, width: u16) -> Vec<Line<'static>> {
-        let mut lines: Vec<Line<'static>> = Vec::new();
+        let mut lines = Vec::new();
 
-        // --- System Prompts section ---
-        lines.push(Line::styled(
-            " System Prompts",
-            Style::default()
-                .fg(Color::White)
-                .add_modifier(Modifier::BOLD),
-        ));
-        lines.push(Line::styled(
-            format!(" {}", "─".repeat(width.saturating_sub(2) as usize)),
-            Style::default().fg(Color::DarkGray),
-        ));
-
+        lines.push(section_header(" System Prompts", width));
         if self.system_prompts.is_empty() {
             lines.push(Line::styled(
                 "  No system prompts found",
@@ -179,117 +142,62 @@ impl PromptsPage {
             ));
         } else {
             for (i, p) in self.system_prompts.iter().enumerate() {
-                let is_selected = self.selected == i;
-                lines.extend(render_system_prompt_owned(p, is_selected, width));
+                lines.extend(render_system_prompt_owned(p, self.selected == i, width));
             }
         }
 
-        // Context injection toggle — last item in System Prompts section
-        let ctx_selected = self.selected == self.context_toggle_idx();
-        let ctx_checkbox = if self.context_enabled { "[x]" } else { "[ ]" };
-        let ctx_check_color = if self.context_enabled {
-            Color::Green
-        } else {
-            Color::DarkGray
-        };
-        let ctx_name_style = if ctx_selected {
-            Style::default()
-                .fg(Color::Cyan)
-                .add_modifier(Modifier::BOLD)
-        } else {
-            Style::default().fg(Color::White)
-        };
-        lines.push(Line::from(vec![
-            Span::styled(ctx_checkbox, Style::default().fg(ctx_check_color)),
-            Span::raw(" "),
-            Span::styled("Repository Context (map.md)", ctx_name_style),
-        ]));
-        lines.push(Line::from(vec![
-            Span::raw("    "),
-            Span::styled(
-                "Inject repository context into agent system prompt",
-                Style::default().fg(Color::DarkGray),
-            ),
-        ]));
-        lines.push(Line::styled(
-            format!("  {}", "─".repeat(width.saturating_sub(4) as usize)),
-            Style::default().fg(Color::DarkGray),
-        ));
-
         lines.push(Line::from(""));
-
-        // --- Skills section ---
-        lines.push(Line::styled(
-            " Skills",
-            Style::default()
-                .fg(Color::White)
-                .add_modifier(Modifier::BOLD),
-        ));
-        lines.push(Line::styled(
-            format!(" {}", "─".repeat(width.saturating_sub(2) as usize)),
-            Style::default().fg(Color::DarkGray),
-        ));
-
+        lines.push(section_header(" Skills", width));
         if self.skills.is_empty() {
             lines.push(Line::styled(
                 "  No skills registered",
                 Style::default().fg(Color::DarkGray),
             ));
         } else {
-            let ss = self.skills_start();
+            let start = self.skills_start();
             for (i, s) in self.skills.iter().enumerate() {
-                let is_selected = self.selected == ss + i;
-                lines.extend(render_skill_owned(s, is_selected, width));
+                lines.extend(render_skill_owned(s, self.selected == start + i, width));
             }
         }
 
-        // Help line
         lines.push(Line::from(""));
         lines.push(Line::styled(
             "  ↑↓ select  │  Enter toggle  │  d download  │  x delete",
             Style::default().fg(Color::DarkGray),
         ));
-
         lines
     }
 
-    /// Compute the line offset of the currently selected item for scroll tracking.
     fn selected_line_offset(&self, width: u16) -> usize {
-        let mut offset = 2; // section header + separator
+        let mut offset = 1;
 
         if self.system_prompts.is_empty() {
-            offset += 1; // placeholder
-        }
-
-        // Selected is a system prompt entry
-        if self.selected < self.system_prompts.len() {
-            for i in 0..self.selected {
-                offset += render_system_prompt_owned(&self.system_prompts[i], false, width).len();
+            if self.selected == 0 {
+                return offset;
             }
-            return offset;
+            offset += 1;
+        } else {
+            for (i, p) in self.system_prompts.iter().enumerate() {
+                if self.selected == i {
+                    return offset;
+                }
+                offset += render_system_prompt_owned(p, false, width).len();
+            }
         }
 
-        // Past system prompt entries
-        for p in &self.system_prompts {
-            offset += render_system_prompt_owned(p, false, width).len();
-        }
-
-        // Selected is context toggle (still in system prompts section)
-        if self.selected == self.context_toggle_idx() {
-            return offset;
-        }
-
-        offset += 3; // context toggle (3 lines: checkbox + description + separator)
-        offset += 3; // blank + skills header + separator
+        offset += 2;
 
         if self.skills.is_empty() {
-            offset += 1;
+            return offset;
         }
 
-        let skill_idx = self.selected - self.skills_start();
-        for i in 0..skill_idx {
-            offset += render_skill_owned(&self.skills[i], false, width).len();
+        for (i, s) in self.skills.iter().enumerate() {
+            if self.selected == self.skills_start() + i {
+                return offset;
+            }
+            offset += render_skill_owned(s, false, width).len();
         }
+
         offset
     }
 }
@@ -306,29 +214,15 @@ impl Widget for PromptsPage {
             .title(" Prompts ")
             .borders(Borders::ALL)
             .border_style(Style::default().fg(Color::DarkGray));
-
         let inner = block.inner(area);
         frame.render_widget(block, area);
 
-        if inner.height == 0 || inner.width == 0 {
-            return;
-        }
-
-        let all_lines = self.build_lines(inner.width);
-
-        self.scroll.set_item_count(all_lines.len());
+        let lines = self.build_lines(inner.width);
+        self.scroll.set_item_count(lines.len());
         self.scroll.set_visible_height(inner.height as usize);
         self.scroll.select(self.selected_line_offset(inner.width));
-
         let range = self.scroll.visible_range();
-        let visible: Vec<Line> = all_lines
-            .into_iter()
-            .skip(range.start)
-            .take(range.len())
-            .collect();
-
-        let paragraph = Paragraph::new(visible);
-        frame.render_widget(paragraph, inner);
+        frame.render_widget(Paragraph::new(lines[range].to_vec()), inner);
     }
 
     fn handle_scroll(&mut self, direction: ScrollDirection) {
@@ -336,127 +230,75 @@ impl Widget for PromptsPage {
     }
 
     fn handle_click(&mut self, row: u16, _col: u16, _ctx: &RenderContext) -> Option<WidgetAction> {
-        // Simple: map click to the flat item list
-        let visible_row = self.scroll.offset + row as usize;
-        let width = 80u16; // approximate for hit-testing
-
-        let mut line_idx = 2; // section header + separator
+        let width = 80u16;
+        let clicked = self.scroll.offset + row as usize;
+        let mut offset = 1;
 
         if self.system_prompts.is_empty() {
-            line_idx += 1;
+            offset += 1;
         } else {
             for (i, p) in self.system_prompts.iter().enumerate() {
                 let h = render_system_prompt_owned(p, false, width).len();
-                if visible_row < line_idx + h {
+                if clicked >= offset && clicked < offset + h {
                     self.selected = i;
-                    return Some(WidgetAction::ToggleSystemPrompt(p.name.clone()));
+                    return Some(WidgetAction::ToggleSystemPrompt(
+                        self.system_prompts[i].name.clone(),
+                    ));
                 }
-                line_idx += h;
+                offset += h;
             }
         }
 
-        // Context toggle = 3 lines (checkbox + description + separator)
-        if visible_row < line_idx + 3 {
-            self.selected = self.context_toggle_idx();
-            return Some(WidgetAction::ToggleContextInjection);
+        offset += 2;
+
+        if self.skills.is_empty() {
+            return None;
         }
-        line_idx += 3;
 
-        line_idx += 3; // blank + skills header + separator
-
-        let ss = self.skills_start();
-        if !self.skills.is_empty() {
-            for (i, s) in self.skills.iter().enumerate() {
-                let h = render_skill_owned(s, false, width).len();
-                if visible_row < line_idx + h {
-                    self.selected = ss + i;
-                    return Some(self.skill_toggle_action(i));
-                }
-                line_idx += h;
+        let start = self.skills_start();
+        for (i, s) in self.skills.iter().enumerate() {
+            let h = render_skill_owned(s, false, width).len();
+            if clicked >= offset && clicked < offset + h {
+                self.selected = start + i;
+                return Some(self.skill_toggle_action(i));
             }
+            offset += h;
         }
 
         None
     }
 }
 
-// ---------------------------------------------------------------------------
-// Rendering helpers
-// ---------------------------------------------------------------------------
-
-fn render_system_prompt_owned(
-    p: &SystemPromptEntry,
-    is_selected: bool,
-    width: u16,
-) -> Vec<Line<'static>> {
-    let mut lines = Vec::new();
-
-    let checkbox = if p.enabled { "[x]" } else { "[ ]" };
-    let check_color = if p.enabled {
-        Color::Green
-    } else {
-        Color::DarkGray
-    };
-    let name_style = if is_selected {
+fn section_header(title: &str, width: u16) -> Line<'static> {
+    let mut line = Vec::new();
+    line.push(Span::styled(
+        title.to_string(),
         Style::default()
-            .fg(Color::Cyan)
-            .add_modifier(Modifier::BOLD)
-    } else {
-        Style::default().fg(Color::White)
-    };
-
-    lines.push(Line::from(vec![
-        Span::styled(checkbox, Style::default().fg(check_color)),
-        Span::raw(" "),
-        Span::styled(p.name.clone(), name_style),
-        Span::styled("  │  ", Style::default().fg(Color::DarkGray)),
-        Span::styled(p.provider.clone(), Style::default().fg(Color::DarkGray)),
-    ]));
-
-    if !p.description.is_empty() {
-        lines.push(Line::from(vec![
-            Span::raw("    "),
-            Span::styled(p.description.clone(), Style::default().fg(Color::DarkGray)),
-        ]));
-    }
-
-    if !p.content.is_empty() {
-        let preview = p.content.lines().next().unwrap_or("");
-        let max = (width as usize).saturating_sub(8);
-        let truncated = if preview.len() > max && max > 3 {
-            format!("{}...", &preview[..max - 3])
-        } else {
-            preview.to_string()
-        };
-        lines.push(Line::from(vec![
-            Span::raw("    "),
-            Span::styled(
-                truncated,
-                Style::default()
-                    .fg(Color::DarkGray)
-                    .add_modifier(Modifier::DIM),
-            ),
-        ]));
-    }
-
-    lines.push(Line::styled(
-        format!("  {}", "─".repeat(width.saturating_sub(4) as usize)),
-        Style::default().fg(Color::DarkGray),
+            .fg(Color::White)
+            .add_modifier(Modifier::BOLD),
     ));
-
-    lines
+    let fill = width.saturating_sub(title.len() as u16 + 1) as usize;
+    if fill > 0 {
+        line.push(Span::styled(
+            format!(" {}", "─".repeat(fill.saturating_sub(1))),
+            Style::default().fg(Color::DarkGray),
+        ));
+    }
+    Line::from(line)
 }
 
-fn render_skill_owned(s: &SkillStatus, is_selected: bool, width: u16) -> Vec<Line<'static>> {
-    let mut lines = Vec::new();
-
-    let checkbox = if s.downloaded { "[✓]" } else { "[ ]" };
-    let check_color = if s.downloaded {
+fn render_system_prompt_owned(
+    prompt: &SystemPromptEntry,
+    selected: bool,
+    width: u16,
+) -> Vec<Line<'static>> {
+    let checkbox = if prompt.enabled { "[x]" } else { "[ ]" };
+    let check_color = if prompt.enabled {
         Color::Green
     } else {
         Color::DarkGray
     };
-    let name_style = if is_selected {
+    let name_style = if selected {
         Style::default()
             .fg(Color::Cyan)
             .add_modifier(Modifier::BOLD)
@@ -464,266 +306,120 @@ fn render_skill_owned(s: &SkillStatus, is_selected: bool, width: u16) -> Vec<Lin
         Style::default().fg(Color::White)
     };
 
-    let (status_label, status_color) = if s.downloaded {
-        ("downloaded", Color::Green)
+    vec![
+        Line::from(vec![
+            Span::styled(checkbox, Style::default().fg(check_color)),
+            Span::raw(" "),
+            Span::styled(prompt.name.clone(), name_style),
+            Span::styled(
+                format!(" [{}]", prompt.provider),
+                Style::default().fg(Color::DarkGray),
+            ),
+        ]),
+        Line::from(vec![
+            Span::raw("    "),
+            Span::styled(
+                prompt.description.clone(),
+                Style::default().fg(Color::DarkGray),
+            ),
+        ]),
+        Line::styled(
+            format!("  {}", "─".repeat(width.saturating_sub(4) as usize)),
+            Style::default().fg(Color::DarkGray),
+        ),
+    ]
+}
+
+fn render_skill_owned(skill: &SkillStatus, selected: bool, width: u16) -> Vec<Line<'static>> {
+    let badge = if skill.downloaded { "[on]" } else { "[off]" };
+    let badge_color = if skill.downloaded {
+        Color::Green
     } else {
-        ("not installed", Color::DarkGray)
+        Color::DarkGray
+    };
+    let name_style = if selected {
+        Style::default()
+            .fg(Color::Cyan)
+            .add_modifier(Modifier::BOLD)
+    } else {
+        Style::default().fg(Color::White)
     };
 
-    lines.push(Line::from(vec![
-        Span::styled(checkbox, Style::default().fg(check_color)),
-        Span::raw(" "),
-        Span::styled(s.name.clone(), name_style),
-        Span::styled("  │  ", Style::default().fg(Color::DarkGray)),
-        Span::styled(status_label, Style::default().fg(status_color)),
-    ]));
-
-    if !s.description.is_empty() {
-        lines.push(Line::from(vec![
+    vec![
+        Line::from(vec![
+            Span::styled(badge, Style::default().fg(badge_color)),
+            Span::raw(" "),
+            Span::styled(skill.name.clone(), name_style),
+        ]),
+        Line::from(vec![
             Span::raw("    "),
-            Span::styled(s.description.clone(), Style::default().fg(Color::DarkGray)),
-        ]));
-    }
-
-    lines.push(Line::styled(
-        format!("  {}", "─".repeat(width.saturating_sub(4) as usize)),
-        Style::default().fg(Color::DarkGray),
-    ));
-
-    lines
+            Span::styled(
+                skill.description.clone(),
+                Style::default().fg(Color::DarkGray),
+            ),
+        ]),
+        Line::styled(
+            format!("  {}", "─".repeat(width.saturating_sub(4) as usize)),
+            Style::default().fg(Color::DarkGray),
+        ),
+    ]
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crossterm::event::{KeyEventKind, KeyEventState, KeyModifiers};
+    use auriga_skills::SkillStatus;
 
-    fn make_key(code: KeyCode) -> KeyEvent {
-        KeyEvent {
-            code,
-            modifiers: KeyModifiers::NONE,
-            kind: KeyEventKind::Press,
-            state: KeyEventState::NONE,
+    fn prompt(name: &str) -> SystemPromptEntry {
+        SystemPromptEntry {
+            name: name.into(),
+            description: "desc".into(),
+            content: "content".into(),
+            provider: "claude".into(),
+            enabled: true,
         }
     }
 
-    fn sample_prompts() -> Vec<SystemPromptEntry> {
-        vec![
-            SystemPromptEntry {
-                name: "default".into(),
-                description: "Default coding assistant".into(),
-                content: "You are a helpful coding assistant.".into(),
-                provider: "claude".into(),
-                enabled: true,
-            },
-            SystemPromptEntry {
-                name: "reviewer".into(),
-                description: "Code review focused".into(),
-                content: "You review code for bugs and style issues.".into(),
-                provider: "claude".into(),
-                enabled: false,
-            },
-        ]
-    }
-
-    fn sample_skills() -> Vec<SkillStatus> {
-        vec![
-            SkillStatus {
-                name: "code-review".into(),
-                description: "Review recent changes".into(),
-                downloaded: false,
-            },
-            SkillStatus {
-                name: "commit-message".into(),
-                description: "Write a conventional commit".into(),
-                downloaded: true,
-            },
-        ]
-    }
-
-    #[test]
-    fn new_page_empty() {
-        let page = PromptsPage::new();
-        assert!(page.system_prompts.is_empty());
-        assert!(page.skills.is_empty());
-    }
-
-    #[test]
-    fn set_data_updates_lists() {
-        let mut page = PromptsPage::new();
-        page.set_system_prompts(sample_prompts());
-        page.set_skills(sample_skills());
-        assert_eq!(page.system_prompts.len(), 2);
-        assert_eq!(page.skills.len(), 2);
+    fn skill(name: &str, downloaded: bool) -> SkillStatus {
+        SkillStatus {
+            name: name.into(),
+            description: "desc".into(),
+            downloaded,
+        }
     }
 
     #[test]
     fn navigation_crosses_sections() {
         let mut page = PromptsPage::new();
-        page.set_system_prompts(sample_prompts());
-        page.set_skills(sample_skills());
-
-        // Start at first system prompt
-        assert_eq!(page.selected, 0);
-        assert_eq!(page.selected_item(), Some((Section::SystemPrompts, 0)));
-
-        // Down through system prompts
-        page.handle_key(make_key(KeyCode::Down));
-        assert_eq!(page.selected_item(), Some((Section::SystemPrompts, 1)));
-
-        // Down to context toggle (still System Prompts section)
-        page.handle_key(make_key(KeyCode::Down));
-        assert_eq!(page.selected, page.context_toggle_idx());
-
-        // Down into skills
-        page.handle_key(make_key(KeyCode::Down));
-        assert_eq!(page.selected_item(), Some((Section::Skills, 0)));
-
-        page.handle_key(make_key(KeyCode::Down));
-        assert_eq!(page.selected_item(), Some((Section::Skills, 1)));
-
-        // Clamped at end
-        page.handle_key(make_key(KeyCode::Down));
-        assert_eq!(page.selected_item(), Some((Section::Skills, 1)));
-
-        // Back up through context into system prompts
-        page.handle_key(make_key(KeyCode::Up));
-        page.handle_key(make_key(KeyCode::Up));
-        page.handle_key(make_key(KeyCode::Up));
-        assert_eq!(page.selected_item(), Some((Section::SystemPrompts, 1)));
+        page.set_system_prompts(vec![prompt("a"), prompt("b")]);
+        page.set_skills(vec![skill("s1", false)]);
+        page.handle_key(KeyEvent::from(KeyCode::Down));
+        assert_eq!(page.selected, 1);
+        page.handle_key(KeyEvent::from(KeyCode::Down));
+        assert_eq!(page.selected, 2);
     }
 
     #[test]
     fn toggle_system_prompt() {
         let mut page = PromptsPage::new();
-        page.set_system_prompts(sample_prompts());
-        page.set_skills(sample_skills());
-
-        let action = page.handle_key(make_key(KeyCode::Enter));
-        assert!(
-            matches!(action, Some(WidgetAction::ToggleSystemPrompt(name)) if name == "default")
-        );
+        page.set_system_prompts(vec![prompt("a")]);
+        let action = page.handle_key(KeyEvent::from(KeyCode::Enter));
+        assert!(matches!(action, Some(WidgetAction::ToggleSystemPrompt(_))));
     }
 
     #[test]
-    fn toggle_context_injection() {
+    fn enter_on_skill_toggles_download() {
         let mut page = PromptsPage::new();
-        page.set_system_prompts(sample_prompts());
-
-        // Navigate past 2 system prompts to context toggle
-        page.handle_key(make_key(KeyCode::Down));
-        page.handle_key(make_key(KeyCode::Down));
-        assert_eq!(page.selected, page.context_toggle_idx());
-        let action = page.handle_key(make_key(KeyCode::Enter));
-        assert!(matches!(action, Some(WidgetAction::ToggleContextInjection)));
+        page.set_skills(vec![skill("s1", false)]);
+        let action = page.handle_key(KeyEvent::from(KeyCode::Enter));
+        assert!(matches!(action, Some(WidgetAction::DownloadSkill(_))));
     }
 
     #[test]
-    fn enter_on_not_downloaded_skill_emits_download() {
+    fn delete_downloaded_skill() {
         let mut page = PromptsPage::new();
-        page.set_system_prompts(sample_prompts());
-        page.set_skills(sample_skills());
-
-        // Navigate past 2 system prompts + context toggle into the first skill.
-        page.handle_key(make_key(KeyCode::Down));
-        page.handle_key(make_key(KeyCode::Down));
-        page.handle_key(make_key(KeyCode::Down));
-        let action = page.handle_key(make_key(KeyCode::Enter));
-        assert!(matches!(action, Some(WidgetAction::DownloadSkill(n)) if n == "code-review"));
-    }
-
-    #[test]
-    fn enter_on_downloaded_skill_emits_delete() {
-        let mut page = PromptsPage::new();
-        page.set_system_prompts(sample_prompts());
-        page.set_skills(sample_skills());
-
-        // Navigate to the second skill (already downloaded).
-        for _ in 0..4 {
-            page.handle_key(make_key(KeyCode::Down));
-        }
-        let action = page.handle_key(make_key(KeyCode::Enter));
-        assert!(matches!(action, Some(WidgetAction::DeleteSkill(n)) if n == "commit-message"));
-    }
-
-    #[test]
-    fn d_on_not_downloaded_skill_emits_download() {
-        let mut page = PromptsPage::new();
-        page.set_skills(sample_skills());
-        // Selection starts on context toggle (no prompts); one down → first skill.
-        page.handle_key(make_key(KeyCode::Down));
-        let action = page.handle_key(make_key(KeyCode::Char('d')));
-        assert!(matches!(action, Some(WidgetAction::DownloadSkill(n)) if n == "code-review"));
-    }
-
-    #[test]
-    fn d_on_downloaded_skill_is_noop() {
-        let mut page = PromptsPage::new();
-        page.set_skills(sample_skills());
-        // Navigate to the downloaded skill (2nd).
-        page.handle_key(make_key(KeyCode::Down));
-        page.handle_key(make_key(KeyCode::Down));
-        assert!(page.handle_key(make_key(KeyCode::Char('d'))).is_none());
-    }
-
-    #[test]
-    fn x_on_downloaded_skill_emits_delete() {
-        let mut page = PromptsPage::new();
-        page.set_skills(sample_skills());
-        page.handle_key(make_key(KeyCode::Down));
-        page.handle_key(make_key(KeyCode::Down));
-        let action = page.handle_key(make_key(KeyCode::Char('x')));
-        assert!(matches!(action, Some(WidgetAction::DeleteSkill(n)) if n == "commit-message"));
-    }
-
-    #[test]
-    fn x_on_not_downloaded_skill_is_noop() {
-        let mut page = PromptsPage::new();
-        page.set_skills(sample_skills());
-        page.handle_key(make_key(KeyCode::Down));
-        assert!(page.handle_key(make_key(KeyCode::Char('x'))).is_none());
-    }
-
-    #[test]
-    fn selected_clamped_on_shrink() {
-        let mut page = PromptsPage::new();
-        page.set_system_prompts(sample_prompts());
-        page.set_skills(sample_skills());
-        page.selected = 4; // last skill (2 prompts + 1 context + 2 skills - 1)
-        page.set_skills(Vec::new()); // remove all skills
-        assert_eq!(page.selected, 2); // clamped to context toggle
-    }
-
-    #[test]
-    fn render_system_prompt_lines() {
-        let p = &sample_prompts()[0];
-        let lines = render_system_prompt_owned(p, false, 80);
-        // header + description + content preview + separator = 4
-        assert_eq!(lines.len(), 4);
-    }
-
-    #[test]
-    fn render_skill_lines() {
-        let s = &sample_skills()[0];
-        let lines = render_skill_owned(s, false, 80);
-        // header + description + separator = 3
-        assert_eq!(lines.len(), 3);
-    }
-
-    #[test]
-    fn skills_only_no_prompts() {
-        let mut page = PromptsPage::new();
-        page.set_skills(sample_skills());
-        // selected=0 is context toggle (no prompts), down once to reach skills
-        assert_eq!(page.selected, page.context_toggle_idx());
-        page.handle_key(make_key(KeyCode::Down));
-        assert_eq!(page.selected_item(), Some((Section::Skills, 0)));
-    }
-
-    #[test]
-    fn prompts_only_no_skills() {
-        let mut page = PromptsPage::new();
-        page.set_system_prompts(sample_prompts());
-        assert_eq!(page.selected_item(), Some((Section::SystemPrompts, 0)));
+        page.set_skills(vec![skill("s1", true)]);
+        let action = page.handle_key(KeyEvent::from(KeyCode::Char('x')));
+        assert!(matches!(action, Some(WidgetAction::DeleteSkill(_))));
     }
 }

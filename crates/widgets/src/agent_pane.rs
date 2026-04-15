@@ -482,7 +482,7 @@ fn shorten_model(model: Option<&str>) -> String {
 }
 
 /// Compute sub-rects for a 2-column grid layout that adapts to agent count
-fn compute_grid_rects(area: Rect, count: usize) -> Vec<Rect> {
+pub fn compute_grid_rects(area: Rect, count: usize) -> Vec<Rect> {
     if count == 0 {
         return vec![];
     }
@@ -525,6 +525,17 @@ fn compute_grid_rects(area: Rect, count: usize) -> Vec<Rect> {
     }
 
     rects
+}
+
+/// Compute the inner terminal size from an agent cell rect.
+/// Accounts for: top border (1), left/right borders (2), info box (3).
+pub fn terminal_size_from_rect(rect: Rect) -> (u16, u16) {
+    // Content area = rect minus info box (3 rows at bottom)
+    // Content inner = content area minus borders (TOP | LEFT | RIGHT)
+    // So: width - 2, height - 4
+    let cols = rect.width.saturating_sub(2).max(1);
+    let rows = rect.height.saturating_sub(4).max(1);
+    (cols, rows)
 }
 
 impl Widget for AgentPaneWidget {
@@ -698,5 +709,31 @@ mod tests {
     #[test]
     fn shorten_model_none_returns_empty() {
         assert_eq!(shorten_model(None), "");
+    }
+
+    #[test]
+    fn terminal_size_from_rect_subtracts_borders_and_info() {
+        // Rect: 100×40, expected: 98×36 (minus 2 for L/R borders, 4 for top border + info box)
+        let rect = Rect::new(0, 0, 100, 40);
+        let (cols, rows) = terminal_size_from_rect(rect);
+        assert_eq!(cols, 98);
+        assert_eq!(rows, 36);
+    }
+
+    #[test]
+    fn terminal_size_from_rect_handles_small_rects() {
+        // Very small rect should clamp to minimum 1×1
+        let rect = Rect::new(0, 0, 3, 5);
+        let (cols, rows) = terminal_size_from_rect(rect);
+        assert_eq!(cols, 1);
+        assert_eq!(rows, 1);
+    }
+
+    #[test]
+    fn terminal_size_from_rect_handles_zero_size() {
+        let rect = Rect::new(0, 0, 0, 0);
+        let (cols, rows) = terminal_size_from_rect(rect);
+        assert_eq!(cols, 1);
+        assert_eq!(rows, 1);
     }
 }

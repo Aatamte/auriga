@@ -150,20 +150,6 @@ pub struct ClaudeCliConfig {
     pub env: Vec<(String, String)>,
 }
 
-/// A named, reusable Claude CLI configuration preset.
-/// Stored as JSON files in `.auriga/presets/`.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ClaudePreset {
-    /// Display name (e.g. "sandbox", "review-agent").
-    pub name: String,
-    /// Short description shown in the UI.
-    #[serde(default)]
-    pub description: String,
-    /// The CLI configuration this preset applies.
-    #[serde(flatten)]
-    pub config: ClaudeCliConfig,
-}
-
 impl ClaudeCliConfig {
     /// Convert this config into CLI arguments for the `claude` command.
     pub fn to_args(&self) -> Vec<String> {
@@ -497,66 +483,5 @@ mod tests {
         assert!(args.contains(&"--agent".to_string()));
         assert!(args.contains(&"reviewer".to_string()));
         assert!(args.contains(&"--agents".to_string()));
-    }
-
-    #[test]
-    fn preset_round_trips_through_json() {
-        let preset = ClaudePreset {
-            name: "sandbox".into(),
-            description: "Sandboxed agent with no permissions".into(),
-            config: ClaudeCliConfig {
-                permission_mode: Some(PermissionMode::DontAsk),
-                bare: true,
-                ..Default::default()
-            },
-        };
-        let json = serde_json::to_string_pretty(&preset).unwrap();
-        let parsed: ClaudePreset = serde_json::from_str(&json).unwrap();
-        assert_eq!(parsed.name, "sandbox");
-        assert_eq!(parsed.description, "Sandboxed agent with no permissions");
-        assert_eq!(parsed.config.permission_mode, Some(PermissionMode::DontAsk));
-        assert!(parsed.config.bare);
-    }
-
-    #[test]
-    fn preset_flattens_config_fields() {
-        let json = r#"{
-            "name": "fast",
-            "description": "Fast mode",
-            "model": "sonnet",
-            "effort": "low",
-            "bare": true
-        }"#;
-        let preset: ClaudePreset = serde_json::from_str(json).unwrap();
-        assert_eq!(preset.name, "fast");
-        assert_eq!(preset.config.model.as_deref(), Some("sonnet"));
-        assert_eq!(preset.config.effort, Some(EffortLevel::Low));
-        assert!(preset.config.bare);
-    }
-
-    #[test]
-    fn preset_config_produces_correct_args() {
-        let preset = ClaudePreset {
-            name: "review".into(),
-            description: "Code review agent".into(),
-            config: ClaudeCliConfig {
-                model: Some("opus".into()),
-                permission_mode: Some(PermissionMode::Plan),
-                append_system_prompt: Some("You are a code reviewer.".into()),
-                ..Default::default()
-            },
-        };
-        let args = preset.config.to_args();
-        assert_eq!(
-            args,
-            vec![
-                "--model",
-                "opus",
-                "--permission-mode",
-                "plan",
-                "--append-system-prompt",
-                "You are a code reviewer."
-            ]
-        );
     }
 }

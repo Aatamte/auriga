@@ -52,27 +52,7 @@ pub fn init(conn: &Connection) -> rusqlite::Result<()> {
     if version < 1 {
         conn.execute_batch(SCHEMA_V1)?;
     }
-    if version < 2 {
-        conn.execute_batch(auriga_classifier::CLASSIFICATIONS_TABLE_SQL)?;
-    }
-    if version < 3 {
-        conn.execute_batch(auriga_ml::ML_SCHEMA_SQL)?;
-    }
-    if version < 4 {
-        // Add position column to training_labels (recreate table)
-        conn.execute_batch(
-            "DROP TABLE IF EXISTS training_labels;
-             CREATE TABLE IF NOT EXISTS training_labels (
-                 trace_id TEXT NOT NULL,
-                 classifier_name TEXT NOT NULL,
-                 position INTEGER NOT NULL,
-                 label TEXT NOT NULL,
-                 PRIMARY KEY (trace_id, classifier_name, position)
-             );
-             CREATE INDEX IF NOT EXISTS idx_training_labels_classifier_name
-                 ON training_labels(classifier_name);",
-        )?;
-    }
+    // Version 2-4 were classifier/ML schema - now removed
     if version < CURRENT_VERSION {
         set_version(conn, CURRENT_VERSION)?;
     }
@@ -128,9 +108,6 @@ mod tests {
 
         assert!(tables.contains(&"traces".to_string()));
         assert!(tables.contains(&"turns".to_string()));
-        assert!(tables.contains(&"classifications".to_string()));
-        assert!(tables.contains(&"models".to_string()));
-        assert!(tables.contains(&"training_labels".to_string()));
         assert!(tables.contains(&"schema_version".to_string()));
     }
 

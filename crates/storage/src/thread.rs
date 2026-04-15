@@ -2,31 +2,14 @@ use std::path::PathBuf;
 use std::sync::mpsc;
 use std::thread;
 
-use auriga_classifier::ClassificationResult;
-use auriga_core::{Trace, TraceId, Turn};
-use auriga_ml::SavedModel;
+use auriga_core::{Trace, Turn};
 
 use crate::db::Database;
 
 /// Commands processed by the storage background thread.
 /// New domain operations are added as variants here.
 pub enum StorageCommand {
-    SaveTrace {
-        trace: Box<Trace>,
-        turns: Vec<Turn>,
-    },
-    SaveClassification {
-        result: ClassificationResult,
-    },
-    SaveModel {
-        model: SavedModel,
-    },
-    SaveTrainingLabel {
-        trace_id: TraceId,
-        classifier_name: String,
-        position: u32,
-        label: String,
-    },
+    SaveTrace { trace: Box<Trace>, turns: Vec<Turn> },
     Shutdown,
 }
 
@@ -48,46 +31,6 @@ impl StorageHandle {
             .is_err()
         {
             tracing::warn!("storage thread gone, dropping save_trace");
-        }
-    }
-
-    /// Queue a classification result for persistence. Non-blocking.
-    pub fn save_classification(&self, result: ClassificationResult) {
-        if self
-            .tx
-            .send(StorageCommand::SaveClassification { result })
-            .is_err()
-        {
-            tracing::warn!("storage thread gone, dropping save_classification");
-        }
-    }
-
-    /// Queue a trained model for persistence. Non-blocking.
-    pub fn save_model(&self, model: SavedModel) {
-        if self.tx.send(StorageCommand::SaveModel { model }).is_err() {
-            tracing::warn!("storage thread gone, dropping save_model");
-        }
-    }
-
-    /// Queue a training label for persistence. Non-blocking.
-    pub fn save_training_label(
-        &self,
-        trace_id: TraceId,
-        classifier_name: String,
-        position: u32,
-        label: String,
-    ) {
-        if self
-            .tx
-            .send(StorageCommand::SaveTrainingLabel {
-                trace_id,
-                classifier_name,
-                position,
-                label,
-            })
-            .is_err()
-        {
-            tracing::warn!("storage thread gone, dropping save_training_label");
         }
     }
 
@@ -120,28 +63,6 @@ pub fn start_storage_thread(db_path: PathBuf) -> anyhow::Result<StorageHandle> {
                     StorageCommand::SaveTrace { trace, turns } => {
                         let turn_refs: Vec<&Turn> = turns.iter().collect();
                         if let Err(e) = db.save_trace(&trace, &turn_refs) {
-                            tracing::error!(error = %e, "storage persistence failed");
-                        }
-                    }
-                    StorageCommand::SaveClassification { result } => {
-                        if let Err(e) = db.save_classification(&result) {
-                            tracing::error!(error = %e, "storage persistence failed");
-                        }
-                    }
-                    StorageCommand::SaveModel { model } => {
-                        if let Err(e) = db.save_model(&model) {
-                            tracing::error!(error = %e, "storage persistence failed");
-                        }
-                    }
-                    StorageCommand::SaveTrainingLabel {
-                        trace_id,
-                        classifier_name,
-                        position,
-                        label,
-                    } => {
-                        if let Err(e) =
-                            db.save_training_label(trace_id, &classifier_name, position, &label)
-                        {
                             tracing::error!(error = %e, "storage persistence failed");
                         }
                     }

@@ -4,16 +4,12 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum WidgetId {
-    AgentList,
     AgentPane,
     RecentActivity,
     FileTree,
     SettingsPage,
     DatabasePage,
-    ClassifiersPage,
-    ClassifierPanel,
     PromptsPage,
-    ContextPage,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -65,27 +61,19 @@ impl Default for Grid {
             columns: 12,
             rows: vec![
                 Row {
-                    height: Size::Percent("20%".to_string()),
+                    height: Size::Percent("50%".to_string()),
                     cells: vec![
                         Cell {
-                            widget: WidgetId::AgentList,
+                            widget: WidgetId::RecentActivity,
                             span: 2,
                             rowspan: 1,
                         },
                         Cell {
                             widget: WidgetId::AgentPane,
                             span: 10,
-                            rowspan: 3,
+                            rowspan: 2,
                         },
                     ],
-                },
-                Row {
-                    height: Size::Percent("30%".to_string()),
-                    cells: vec![Cell {
-                        widget: WidgetId::RecentActivity,
-                        span: 2,
-                        rowspan: 1,
-                    }],
                 },
                 Row {
                     height: Size::Percent("50%".to_string()),
@@ -217,21 +205,19 @@ mod tests {
     fn default_grid_has_four_rows() {
         let grid = Grid::default();
         assert_eq!(grid.columns, 12);
-        assert_eq!(grid.rows.len(), 3);
+        assert_eq!(grid.rows.len(), 2);
     }
 
     #[test]
     fn default_grid_layout_correct() {
         let grid = Grid::default();
-        assert_eq!(grid.rows[0].cells[0].widget, WidgetId::AgentList);
+        assert_eq!(grid.rows[0].cells[0].widget, WidgetId::RecentActivity);
         assert_eq!(grid.rows[0].cells[0].span, 2);
         assert_eq!(grid.rows[0].cells[1].widget, WidgetId::AgentPane);
         assert_eq!(grid.rows[0].cells[1].span, 10);
-        assert_eq!(grid.rows[0].cells[1].rowspan, 3);
-        assert_eq!(grid.rows[1].cells[0].widget, WidgetId::RecentActivity);
+        assert_eq!(grid.rows[0].cells[1].rowspan, 2);
+        assert_eq!(grid.rows[1].cells[0].widget, WidgetId::FileTree);
         assert_eq!(grid.rows[1].cells[0].span, 2);
-        assert_eq!(grid.rows[2].cells[0].widget, WidgetId::FileTree);
-        assert_eq!(grid.rows[2].cells[0].span, 2);
     }
 
     #[test]
@@ -257,7 +243,7 @@ mod tests {
                     height: Size::Fixed(10),
                     cells: vec![
                         Cell {
-                            widget: WidgetId::AgentList,
+                            widget: WidgetId::RecentActivity,
                             span: 4,
                             rowspan: 1,
                         },
@@ -283,7 +269,7 @@ mod tests {
         let rects = grid.compute_rects(area);
 
         assert_eq!(rects.len(), 3);
-        assert_eq!(rects[0].widget, WidgetId::AgentList);
+        assert_eq!(rects[0].widget, WidgetId::RecentActivity);
         assert_eq!(rects[0].rect, Rect::new(0, 0, 40, 10));
         assert_eq!(rects[1].widget, WidgetId::AgentPane);
         assert_eq!(rects[1].rect, Rect::new(40, 0, 80, 30));
@@ -300,7 +286,7 @@ mod tests {
                     height: Size::Fixed(10),
                     cells: vec![
                         Cell {
-                            widget: WidgetId::AgentList,
+                            widget: WidgetId::RecentActivity,
                             span: 4,
                             rowspan: 1,
                         },
@@ -339,7 +325,7 @@ mod tests {
                 height: Size::Fixed(10),
                 cells: vec![
                     Cell {
-                        widget: WidgetId::AgentList,
+                        widget: WidgetId::RecentActivity,
                         span: 5,
                         rowspan: 1,
                     },

@@ -5,15 +5,13 @@ use std::sync::mpsc;
 
 const TOOL_LIST_AGENTS: &str = "list_agents";
 const TOOL_SEND_MESSAGE: &str = "send_message";
-const TOOL_LIST_CONTEXT: &str = "list_context";
-const TOOL_GET_CONTEXT: &str = "get_context";
 
 /// Handle an MCP JSON-RPC request and return a response.
 /// For tool calls, sends an McpEvent to the main loop and blocks for the response.
 pub fn handle_request(req: &Request, event_tx: &mpsc::Sender<McpEvent>) -> Option<Response> {
     match req.method.as_str() {
         "initialize" => Some(handle_initialize(req)),
-        "notifications/initialized" => None, // notification, no response
+        "notifications/initialized" => None,
         "tools/list" => Some(handle_tools_list(req)),
         "tools/call" => Some(handle_tools_call(req, event_tx)),
         _ => Some(Response::error(
@@ -29,14 +27,12 @@ fn handle_initialize(req: &Request) -> Response {
         req.id.clone(),
         json!({
             "protocolVersion": "2024-11-05",
-            "capabilities": {
-                "tools": {}
-            },
+            "capabilities": { "tools": {} },
             "serverInfo": {
                 "name": "auriga",
                 "version": "0.1.0"
             },
-            "instructions": "You are one of several AI agents running inside an Auriga. The auriga manages multiple agents working in the same project. Your agent name is in the AURIGA_AGENT_NAME environment variable — use it when sending messages so other agents know who you are. Use list_agents to discover other agents (it returns each agent's UUID, name, and status). Use send_message to communicate with them. Coordinate with other agents to avoid duplicate work and share findings. Use list_context to discover repository context documents that describe the codebase architecture, conventions, and patterns. Use get_context to read a specific document by name."
+            "instructions": "You are one of several AI agents running inside an Auriga. Your agent name is in the AURIGA_AGENT_NAME environment variable. Use list_agents to discover other agents and send_message to coordinate with them."
         }),
     )
 }
@@ -48,7 +44,7 @@ fn handle_tools_list(req: &Request) -> Response {
             "tools": [
                 {
                     "name": TOOL_LIST_AGENTS,
-                    "description": "List all agents currently running in Auriga. Returns each agent's UUID, name, and current status (Idle or Working). Use this to discover which agents are available before sending messages.",
+                    "description": "List all agents currently running in Auriga. Returns each agent's UUID, name, and current status.",
                     "inputSchema": {
                         "type": "object",
                         "properties": {},
@@ -57,47 +53,24 @@ fn handle_tools_list(req: &Request) -> Response {
                 },
                 {
                     "name": TOOL_SEND_MESSAGE,
-                    "description": "Send a message to another agent. The message is delivered to the target agent's input with your name attached so they know who sent it. Returns immediately after delivery. Use list_agents first to get valid agent names.",
+                    "description": "Send a message to another agent. Use list_agents first to get valid agent names.",
                     "inputSchema": {
                         "type": "object",
                         "properties": {
                             "from_agent_name": {
                                 "type": "string",
-                                "description": "Your own agent name (from AURIGA_AGENT_NAME env var). This is included in the message so the receiver knows who sent it."
+                                "description": "Your own agent name from AURIGA_AGENT_NAME."
                             },
                             "to_agent_name": {
                                 "type": "string",
-                                "description": "The exact name of the target agent (e.g. 'claude #a3f7b2c1'). Must match a name from list_agents."
+                                "description": "The exact target agent name from list_agents."
                             },
                             "message": {
                                 "type": "string",
-                                "description": "The message to send. This will be delivered as input to the target agent."
+                                "description": "The message to send."
                             }
                         },
                         "required": ["from_agent_name", "to_agent_name", "message"]
-                    }
-                },
-                {
-                    "name": TOOL_LIST_CONTEXT,
-                    "description": "List repository context documents that describe this codebase — its architecture, design principles, coding conventions, and canonical examples. Call this when you need to understand the project structure, find the correct patterns to follow, or orient yourself in an unfamiliar area.",
-                    "inputSchema": {
-                        "type": "object",
-                        "properties": {},
-                        "required": []
-                    }
-                },
-                {
-                    "name": TOOL_GET_CONTEXT,
-                    "description": "Retrieve the full content of a repository context document by name. Use list_context first to see available documents and their descriptions.",
-                    "inputSchema": {
-                        "type": "object",
-                        "properties": {
-                            "name": {
-                                "type": "string",
-                                "description": "The document name from list_context (e.g. 'map', 'principles', 'examples')."
-                            }
-                        },
-                        "required": ["name"]
                     }
                 }
             ]
@@ -118,21 +91,15 @@ fn handle_tools_call(req: &Request, event_tx: &mpsc::Sender<McpEvent>) -> Respon
         TOOL_SEND_MESSAGE => {
             let from_agent_name = match arguments.get("from_agent_name").and_then(|v| v.as_str()) {
                 Some(name) => name.to_string(),
-                None => {
-                    return tool_error(req, "Missing required parameter: from_agent_name");
-                }
+                None => return tool_error(req, "Missing required parameter: from_agent_name"),
             };
             let to_agent_name = match arguments.get("to_agent_name").and_then(|v| v.as_str()) {
                 Some(name) => name.to_string(),
-                None => {
-                    return tool_error(req, "Missing required parameter: to_agent_name");
-                }
+                None => return tool_error(req, "Missing required parameter: to_agent_name"),
             };
             let message = match arguments.get("message").and_then(|v| v.as_str()) {
                 Some(msg) => msg.to_string(),
-                None => {
-                    return tool_error(req, "Missing required parameter: message");
-                }
+                None => return tool_error(req, "Missing required parameter: message"),
             };
             McpRequest::SendMessage {
                 from_agent_name,
@@ -140,20 +107,9 @@ fn handle_tools_call(req: &Request, event_tx: &mpsc::Sender<McpEvent>) -> Respon
                 message,
             }
         }
-        TOOL_LIST_CONTEXT => McpRequest::ListContext,
-        TOOL_GET_CONTEXT => {
-            let name = match arguments.get("name").and_then(|v| v.as_str()) {
-                Some(n) => n.to_string(),
-                None => return tool_error(req, "Missing required parameter: name"),
-            };
-            McpRequest::GetContext { name }
-        }
-        _ => {
-            return tool_error(req, &format!("Unknown tool: {}", tool_name));
-        }
+        _ => return tool_error(req, &format!("Unknown tool: {}", tool_name)),
     };
 
-    // Send to main loop and wait for response
     let (response_tx, response_rx) = mpsc::channel();
     let event = McpEvent {
         request: mcp_request,
@@ -170,11 +126,6 @@ fn handle_tools_call(req: &Request, event_tx: &mpsc::Sender<McpEvent>) -> Respon
             tool_success(req, &text)
         }
         Ok(McpResponse::MessageSent) => tool_success(req, "Message delivered to agent."),
-        Ok(McpResponse::ContextList(docs)) => {
-            let text = serde_json::to_string_pretty(&docs).unwrap_or_default();
-            tool_success(req, &text)
-        }
-        Ok(McpResponse::ContextDoc(content)) => tool_success(req, &content),
         Ok(McpResponse::Error(msg)) => tool_error(req, &msg),
         Err(_) => tool_error(req, "Failed to get response from auriga"),
     }
@@ -220,7 +171,6 @@ mod tests {
         let resp = handle_request(&req, &tx).unwrap();
         let result = resp.result.unwrap();
         assert_eq!(result["serverInfo"]["name"], "auriga");
-        assert!(result["capabilities"]["tools"].is_object());
         assert!(result["instructions"]
             .as_str()
             .unwrap()
@@ -240,17 +190,15 @@ mod tests {
     }
 
     #[test]
-    fn tools_list_returns_four_tools() {
+    fn tools_list_returns_two_tools() {
         let (tx, _rx) = mpsc::channel();
         let req = make_request("tools/list", json!({}));
         let resp = handle_request(&req, &tx).unwrap();
         let tools = resp.result.unwrap()["tools"].as_array().unwrap().clone();
-        assert_eq!(tools.len(), 4);
+        assert_eq!(tools.len(), 2);
         let names: Vec<&str> = tools.iter().map(|t| t["name"].as_str().unwrap()).collect();
         assert!(names.contains(&"list_agents"));
         assert!(names.contains(&"send_message"));
-        assert!(names.contains(&"list_context"));
-        assert!(names.contains(&"get_context"));
     }
 
     #[test]
@@ -343,83 +291,6 @@ mod tests {
         let resp = handle.join().unwrap().unwrap();
         let result = resp.result.unwrap();
         assert!(!result["isError"].as_bool().unwrap());
-    }
-
-    #[test]
-    fn tools_call_list_context_sends_event() {
-        let (tx, rx) = mpsc::channel();
-        let req = make_request(
-            "tools/call",
-            json!({"name": "list_context", "arguments": {}}),
-        );
-
-        let handle = std::thread::spawn(move || handle_request(&req, &tx));
-
-        let event = rx.recv().unwrap();
-        assert!(matches!(event.request, McpRequest::ListContext));
-        event
-            .response_tx
-            .send(McpResponse::ContextList(vec![crate::ContextDocInfo {
-                name: "map".to_string(),
-                description: "Project architecture map.".to_string(),
-                last_updated: Some("2026-04-06".to_string()),
-            }]))
-            .unwrap();
-
-        let resp = handle.join().unwrap().unwrap();
-        let text = resp.result.unwrap()["content"][0]["text"]
-            .as_str()
-            .unwrap()
-            .to_string();
-        assert!(text.contains("map"));
-        assert!(text.contains("Project architecture map."));
-    }
-
-    #[test]
-    fn tools_call_get_context_sends_event() {
-        let (tx, rx) = mpsc::channel();
-        let req = make_request(
-            "tools/call",
-            json!({"name": "get_context", "arguments": {"name": "principles"}}),
-        );
-
-        let handle = std::thread::spawn(move || handle_request(&req, &tx));
-
-        let event = rx.recv().unwrap();
-        match &event.request {
-            McpRequest::GetContext { name } => assert_eq!(name, "principles"),
-            _ => panic!("expected GetContext"),
-        }
-        event
-            .response_tx
-            .send(McpResponse::ContextDoc(
-                "# Design Principles\nContent here.".to_string(),
-            ))
-            .unwrap();
-
-        let resp = handle.join().unwrap().unwrap();
-        let result = resp.result.unwrap();
-        assert!(!result["isError"].as_bool().unwrap());
-        assert!(result["content"][0]["text"]
-            .as_str()
-            .unwrap()
-            .contains("Design Principles"));
-    }
-
-    #[test]
-    fn get_context_requires_name() {
-        let (tx, _rx) = mpsc::channel();
-        let req = make_request(
-            "tools/call",
-            json!({"name": "get_context", "arguments": {}}),
-        );
-        let resp = handle_request(&req, &tx).unwrap();
-        let result = resp.result.unwrap();
-        assert!(result["isError"].as_bool().unwrap());
-        assert!(result["content"][0]["text"]
-            .as_str()
-            .unwrap()
-            .contains("name"));
     }
 
     #[test]

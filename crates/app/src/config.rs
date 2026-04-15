@@ -1,17 +1,17 @@
 use anyhow::Result;
+use auriga_core::ClaudeCliConfig;
 use auriga_grid::Grid;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::time::SystemTime;
 
 const DIR_NAME: &str = ".auriga";
-const CONFIG_FILE: &str = "config.json";
+const CONFIG_FILE: &str = "settings.json";
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Config {
     pub mcp_port: u16,
-    #[serde(default)]
-    pub disabled_classifiers: Vec<String>,
     #[serde(default, deserialize_with = "deserialize_layout")]
     pub layout: Grid,
     #[serde(default = "default_provider")]
@@ -22,9 +22,9 @@ pub struct Config {
     pub display_mode: String,
     #[serde(default = "default_font_size")]
     pub font_size: u16,
-    /// Name of the active Claude CLI preset (matches a file in `presets/`).
-    #[serde(default = "default_active_preset")]
-    pub active_preset: String,
+    /// Claude CLI configuration used when spawning new Claude agents.
+    #[serde(default)]
+    pub claude: ClaudeCliConfig,
 }
 
 fn default_font_size() -> u16 {
@@ -41,10 +41,6 @@ fn default_true() -> bool {
 
 fn default_display_mode() -> String {
     "provider".into()
-}
-
-fn default_active_preset() -> String {
-    "default".into()
 }
 
 /// Deserialize layout, falling back to default if the JSON is invalid (e.g. stale widget ids).
@@ -66,19 +62,22 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             mcp_port: 7850,
-            disabled_classifiers: Vec::new(),
             layout: Grid::default(),
             default_provider: default_provider(),
             claude_enabled: true,
             display_mode: default_display_mode(),
             font_size: default_font_size(),
-            active_preset: default_active_preset(),
+            claude: ClaudeCliConfig::default(),
         }
     }
 }
 
 pub fn dir_path() -> PathBuf {
     PathBuf::from(DIR_NAME)
+}
+
+pub fn file_path() -> PathBuf {
+    dir_path().join(CONFIG_FILE)
 }
 
 /// Ensures `.auriga/` exists with default files.
@@ -98,30 +97,6 @@ pub fn init() -> Result<Config> {
         include_str!("defaults/coding-assistant.json"),
     )?;
 
-    // Ensure presets directory exists with default preset
-    let presets_dir = dir.join("presets");
-    fs::create_dir_all(&presets_dir)?;
-    create_default_file(
-        &presets_dir,
-        "default.json",
-        include_str!("defaults/default-preset.json"),
-    )?;
-
-    // Ensure context directory exists with default files
-    let context_dir = dir.join("context");
-    fs::create_dir_all(&context_dir)?;
-    create_default_file(&context_dir, "map.md", include_str!("defaults/map.md"))?;
-    create_default_file(
-        &context_dir,
-        "principles.md",
-        include_str!("defaults/principles.md"),
-    )?;
-    create_default_file(
-        &context_dir,
-        "examples.md",
-        include_str!("defaults/examples.md"),
-    )?;
-
     Ok(config)
 }
 
@@ -133,63 +108,29 @@ fn create_default_prompt(dir: &Path, name: &str, content: &str) -> Result<()> {
     Ok(())
 }
 
-fn create_default_file(dir: &Path, name: &str, content: &str) -> Result<()> {
-    let path = dir.join(name);
-    if !path.exists() {
-        fs::write(path, content)?;
-    }
-    Ok(())
-}
-
 /// Save config to disk.
 pub fn save(config: &Config) -> Result<()> {
-    let path = dir_path().join(CONFIG_FILE);
     let json = serde_json::to_string_pretty(config)?;
-    fs::write(path, json)?;
+    fs::write(file_path(), json)?;
     Ok(())
 }
 
-/// Load all presets from `.auriga/presets/`.
-pub fn load_presets() -> Vec<auriga_core::ClaudePreset> {
-    let presets_dir = dir_path().join("presets");
-    let Ok(entries) = fs::read_dir(&presets_dir) else {
-        return Vec::new();
-    };
-
-    let mut presets = Vec::new();
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if path.extension().and_then(|e| e.to_str()) != Some("json") {
-            continue;
-        }
-        let Ok(contents) = fs::read_to_string(&path) else {
-            continue;
-        };
-        let Ok(preset) = serde_json::from_str::<auriga_core::ClaudePreset>(&contents) else {
-            continue;
-        };
-        presets.push(preset);
-    }
-    presets
+pub fn load() -> Result<Config> {
+    let path = file_path();
+    let contents = fs::read_to_string(path)?;
+    let config: Config = serde_json::from_str(&contents)?;
+    Ok(config)
 }
 
-/// Load the active preset from disk.
-pub fn load_active_preset() -> Option<auriga_core::ClaudePreset> {
-    let config_path = dir_path().join(CONFIG_FILE);
-    let contents = fs::read_to_string(&config_path).ok()?;
-    let config: Config = serde_json::from_str(&contents).ok()?;
-    let path = dir_path()
-        .join("presets")
-        .join(format!("{}.json", config.active_preset));
-    let preset_contents = fs::read_to_string(&path).ok()?;
-    serde_json::from_str(&preset_contents).ok()
+pub fn modified_at() -> Option<SystemTime> {
+    fs::metadata(file_path()).and_then(|m| m.modified()).ok()
 }
 
-/// Load the active preset's CLI config as a JSON value for `AgentConfig.provider_config`.
-pub fn load_active_provider_config() -> serde_json::Value {
-    match load_active_preset() {
-        Some(preset) => serde_json::to_value(&preset.config).unwrap_or_default(),
-        None => serde_json::json!({}),
+/// Load the Claude CLI config as a JSON value for `AgentConfig.provider_config`.
+pub fn load_claude_config() -> serde_json::Value {
+    match load() {
+        Ok(config) => serde_json::to_value(&config.claude).unwrap_or_default(),
+        Err(_) => serde_json::json!({}),
     }
 }
 

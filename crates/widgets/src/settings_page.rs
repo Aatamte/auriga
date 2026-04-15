@@ -1,28 +1,65 @@
 use crate::{RenderContext, Widget, WidgetAction};
 use auriga_core::ScrollDirection;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use ratatui::layout::Rect;
+use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph};
 use ratatui::Frame;
+use std::time::SystemTime;
 
-const LABEL_WIDTH: usize = 20;
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum SettingsSection {
+    General,
+    ClaudeSettings,
+}
+
+impl SettingsSection {
+    pub const ALL: [SettingsSection; 2] =
+        [SettingsSection::General, SettingsSection::ClaudeSettings];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            SettingsSection::General => "General",
+            SettingsSection::ClaudeSettings => "claude-settings",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum FocusArea {
+    Sections,
+    Fields,
+}
+
+impl FocusArea {
+    fn next(self) -> Self {
+        match self {
+            FocusArea::Sections => FocusArea::Fields,
+            FocusArea::Fields => FocusArea::Fields,
+        }
+    }
+
+    fn prev(self) -> Self {
+        match self {
+            FocusArea::Sections => FocusArea::Sections,
+            FocusArea::Fields => FocusArea::Sections,
+        }
+    }
+}
 
 pub enum FieldKind {
-    /// Free-text editing.
     Text,
-    /// Cycles through fixed options on Enter.
     Toggle(Vec<String>),
 }
 
 pub struct SettingsField {
+    pub section: SettingsSection,
     pub label: &'static str,
     pub key: &'static str,
     pub value: String,
     pub description: &'static str,
     pub kind: FieldKind,
-    /// Detail lines shown in a right-side panel when this field is selected.
     pub detail: Vec<(String, String)>,
 }
 
@@ -32,7 +69,10 @@ pub struct SettingsPage {
     pub editing: bool,
     pub edit_buffer: String,
     pub dirty: bool,
-    pub save_message: Option<&'static str>,
+    pub save_message: Option<String>,
+    pub file_path: String,
+    pub last_loaded_at: Option<SystemTime>,
+    focus: FocusArea,
 }
 
 impl SettingsPage {
@@ -44,15 +84,53 @@ impl SettingsPage {
             edit_buffer: String::new(),
             dirty: false,
             save_message: None,
+            file_path: ".auriga/settings.json".into(),
+            last_loaded_at: None,
+            focus: FocusArea::Fields,
         }
     }
 
-    /// Set the fields from external config data.
-    pub fn set_fields(&mut self, fields: Vec<SettingsField>) {
-        self.fields = fields;
+    pub fn sync_from_disk(
+        &mut self,
+        fields: Vec<SettingsField>,
+        file_path: String,
+        modified_at: Option<SystemTime>,
+    ) {
+        self.file_path = file_path;
+        if self.dirty {
+            return;
+        }
+        if modified_at == self.last_loaded_at && !self.fields.is_empty() {
+            return;
+        }
+        self.apply_fields(fields, modified_at);
     }
 
-    /// Get current field values as (key, value) pairs.
+    pub fn force_reload(
+        &mut self,
+        fields: Vec<SettingsField>,
+        file_path: String,
+        modified_at: Option<SystemTime>,
+    ) {
+        self.file_path = file_path;
+        self.editing = false;
+        self.edit_buffer.clear();
+        self.dirty = false;
+        self.apply_fields(fields, modified_at);
+    }
+
+    fn apply_fields(&mut self, fields: Vec<SettingsField>, modified_at: Option<SystemTime>) {
+        let selected_key = self.selected_field().map(|f| f.key);
+        self.fields = fields;
+        self.last_loaded_at = modified_at;
+        self.selected = selected_key
+            .and_then(|key| self.fields.iter().position(|f| f.key == key))
+            .or_else(|| (!self.fields.is_empty()).then_some(0));
+        if self.selected.is_none() {
+            self.focus = FocusArea::Sections;
+        }
+    }
+
     pub fn field_values(&self) -> Vec<(&str, &str)> {
         self.fields
             .iter()
@@ -60,14 +138,158 @@ impl SettingsPage {
             .collect()
     }
 
-    /// Handle a key event. Returns a WidgetAction if one should be dispatched.
-    pub fn handle_key(&mut self, key: KeyEvent) -> Option<WidgetAction> {
-        // Ctrl+S saves
-        if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('s') {
-            if self.dirty {
-                return Some(WidgetAction::SaveConfig);
-            }
+    pub fn mark_saved(&mut self, modified_at: Option<SystemTime>) {
+        self.dirty = false;
+        self.last_loaded_at = modified_at;
+        self.save_message = Some("saved".into());
+    }
+
+    fn selected_field(&self) -> Option<&SettingsField> {
+        self.selected.and_then(|idx| self.fields.get(idx))
+    }
+
+    fn selected_field_mut(&mut self) -> Option<&mut SettingsField> {
+        self.selected.and_then(|idx| self.fields.get_mut(idx))
+    }
+
+    fn selected_section(&self) -> SettingsSection {
+        self.selected_field()
+            .map(|f| f.section)
+            .unwrap_or(SettingsSection::General)
+    }
+
+    fn selected_section_idx(&self) -> usize {
+        SettingsSection::ALL
+            .iter()
+            .position(|section| *section == self.selected_section())
+            .unwrap_or(0)
+    }
+
+    fn section_indices(&self, section: SettingsSection) -> Vec<usize> {
+        self.fields
+            .iter()
+            .enumerate()
+            .filter_map(|(idx, f)| (f.section == section).then_some(idx))
+            .collect()
+    }
+
+    fn first_index_in_section(&self, section: SettingsSection) -> Option<usize> {
+        self.fields.iter().position(|f| f.section == section)
+    }
+
+    fn move_section(&mut self, delta: isize) {
+        let current = self.selected_section_idx();
+        let next =
+            (current as isize + delta).clamp(0, SettingsSection::ALL.len() as isize - 1) as usize;
+        if let Some(idx) = self.first_index_in_section(SettingsSection::ALL[next]) {
+            self.selected = Some(idx);
+        }
+        self.editing = false;
+        self.edit_buffer.clear();
+    }
+
+    fn move_within_section(&mut self, delta: isize) {
+        let section = self.selected_section();
+        let indices = self.section_indices(section);
+        if indices.is_empty() {
+            return;
+        }
+        let current = self.selected.unwrap_or(indices[0]);
+        let pos = indices.iter().position(|&idx| idx == current).unwrap_or(0);
+        let next = (pos as isize + delta).clamp(0, indices.len() as isize - 1) as usize;
+        self.selected = Some(indices[next]);
+    }
+
+    fn cycle_selected_toggle(&mut self, delta: isize) {
+        let Some(idx) = self.selected else { return };
+        let Some(field) = self.fields.get_mut(idx) else {
+            return;
+        };
+        let FieldKind::Toggle(options) = &field.kind else {
+            return;
+        };
+        if options.is_empty() {
+            return;
+        }
+        let next = match options.iter().position(|o| *o == field.value) {
+            Some(pos) => (pos as isize + delta).rem_euclid(options.len() as isize) as usize,
+            None => 0,
+        };
+        field.value = options[next].clone();
+        self.dirty = true;
+        self.save_message = None;
+    }
+
+    fn begin_edit(&mut self) {
+        let Some(idx) = self.selected else { return };
+        if let Some(value) = self.fields.get(idx).map(|field| field.value.clone()) {
+            self.editing = true;
+            self.edit_buffer = value;
+        }
+    }
+
+    fn cancel_edit(&mut self) {
+        self.editing = false;
+        self.edit_buffer.clear();
+    }
+
+    fn commit_edit(&mut self) {
+        let buffer = self.edit_buffer.clone();
+        if let Some(field) = self.selected_field_mut() {
+            field.value = buffer;
+            self.dirty = true;
+            self.save_message = None;
+        }
+        self.editing = false;
+        self.edit_buffer.clear();
+    }
+
+    fn save_action(&mut self) -> Option<WidgetAction> {
+        if self.editing {
+            self.commit_edit();
+        }
+
+        if let Some((label, error)) = self.first_validation_error() {
+            self.save_message = Some(format!("{label}: {error}"));
             return None;
+        }
+
+        self.dirty.then_some(WidgetAction::SaveConfig)
+    }
+
+    fn first_validation_error(&self) -> Option<(&'static str, String)> {
+        self.fields.iter().find_map(|field| {
+            validate_field(field.key, &field.value)
+                .err()
+                .map(|error| (field.label, error))
+        })
+    }
+
+    fn activate_current(&mut self) -> Option<WidgetAction> {
+        match self.focus {
+            FocusArea::Sections => {
+                self.focus = FocusArea::Fields;
+                None
+            }
+            FocusArea::Fields => {
+                let field = self.selected_field()?;
+                match field.kind {
+                    FieldKind::Text => {
+                        self.begin_edit();
+                        None
+                    }
+                    FieldKind::Toggle(_) => {
+                        self.cycle_selected_toggle(1);
+                        None
+                    }
+                }
+            }
+        }
+    }
+
+    pub fn handle_key(&mut self, key: KeyEvent) -> Option<WidgetAction> {
+        if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('s') {
+            return self.save_action();
         }
 
         if self.editing {
@@ -79,21 +301,8 @@ impl SettingsPage {
 
     fn handle_edit_key(&mut self, key: KeyEvent) -> Option<WidgetAction> {
         match key.code {
-            KeyCode::Esc => {
-                self.editing = false;
-                self.edit_buffer.clear();
-            }
-            KeyCode::Enter => {
-                if let Some(idx) = self.selected {
-                    if idx < self.fields.len() {
-                        self.fields[idx].value = self.edit_buffer.clone();
-                        self.dirty = true;
-                        self.save_message = None;
-                    }
-                }
-                self.editing = false;
-                self.edit_buffer.clear();
-            }
+            KeyCode::Esc => self.cancel_edit(),
+            KeyCode::Enter => self.commit_edit(),
             KeyCode::Backspace => {
                 self.edit_buffer.pop();
             }
@@ -107,88 +316,223 @@ impl SettingsPage {
 
     fn handle_nav_key(&mut self, key: KeyEvent) -> Option<WidgetAction> {
         match key.code {
-            KeyCode::Up => {
-                if let Some(idx) = self.selected {
-                    if idx > 0 {
-                        self.selected = Some(idx - 1);
-                    }
-                } else if !self.fields.is_empty() {
-                    self.selected = Some(0);
-                }
-            }
-            KeyCode::Down => {
-                if let Some(idx) = self.selected {
-                    if idx + 1 < self.fields.len() {
-                        self.selected = Some(idx + 1);
-                    }
-                } else if !self.fields.is_empty() {
-                    self.selected = Some(0);
-                }
-            }
-            KeyCode::Enter => {
-                if let Some(idx) = self.selected {
-                    if idx < self.fields.len() {
-                        match &self.fields[idx].kind {
-                            FieldKind::Text => {
-                                self.editing = true;
-                                self.edit_buffer = self.fields[idx].value.clone();
-                            }
-                            FieldKind::Toggle(options) => {
-                                if let Some(pos) =
-                                    options.iter().position(|o| *o == self.fields[idx].value)
-                                {
-                                    let next = (pos + 1) % options.len();
-                                    self.fields[idx].value = options[next].clone();
-                                } else if let Some(first) = options.first() {
-                                    self.fields[idx].value = first.clone();
-                                }
-                                self.dirty = true;
-                                self.save_message = None;
-                            }
-                        }
-                    }
-                }
-            }
+            KeyCode::Left => self.focus = self.focus.prev(),
+            KeyCode::Right | KeyCode::Tab => self.focus = self.focus.next(),
+            KeyCode::BackTab => self.focus = self.focus.prev(),
+            KeyCode::Up => match self.focus {
+                FocusArea::Sections => self.move_section(-1),
+                FocusArea::Fields => self.move_within_section(-1),
+            },
+            KeyCode::Down => match self.focus {
+                FocusArea::Sections => self.move_section(1),
+                FocusArea::Fields => self.move_within_section(1),
+            },
+            KeyCode::Enter => return self.activate_current(),
             _ => {}
         }
         None
     }
 
-    fn render_detail(&self, frame: &mut Frame, area: Rect, field: &SettingsField) {
+    fn pane_style(&self, focus: FocusArea) -> Style {
+        if self.focus == focus {
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD)
+        } else {
+            Style::default().fg(Color::DarkGray)
+        }
+    }
+
+    fn status_text(&self) -> (String, Color) {
+        if let Some(msg) = &self.save_message {
+            if msg == "saved" {
+                return ("saved".into(), Color::Green);
+            }
+            return (msg.clone(), Color::Red);
+        }
+        if self.dirty {
+            ("modified".into(), Color::Yellow)
+        } else {
+            ("clean".into(), Color::DarkGray)
+        }
+    }
+
+    fn section_row_style(&self, section: SettingsSection) -> Style {
+        if section == self.selected_section() {
+            let base = if self.focus == FocusArea::Sections {
+                Color::Black
+            } else {
+                Color::Cyan
+            };
+            Style::default()
+                .fg(base)
+                .bg(Color::White)
+                .add_modifier(Modifier::BOLD)
+        } else {
+            Style::default().fg(Color::White)
+        }
+    }
+
+    fn field_row_style(&self, idx: usize) -> Style {
+        if Some(idx) == self.selected {
+            if self.focus == FocusArea::Fields {
+                Style::default()
+                    .fg(Color::Black)
+                    .bg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD)
+            } else {
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD)
+            }
+        } else {
+            Style::default().fg(Color::White)
+        }
+    }
+
+    fn render_header(&self, frame: &mut Frame, area: Rect) {
         let block = Block::default()
-            .title(format!(" {} ", field.label))
+            .title(" Settings ")
             .borders(Borders::ALL)
             .border_style(Style::default().fg(Color::DarkGray));
-
         let inner = block.inner(area);
         frame.render_widget(block, area);
-
         if inner.height == 0 || inner.width == 0 {
             return;
         }
 
-        let label_width = field.detail.iter().map(|(k, _)| k.len()).max().unwrap_or(0) + 2;
-
+        let (status, status_color) = self.status_text();
         let mut lines: Vec<Line> = Vec::new();
-        lines.push(Line::from(""));
-        for (key, val) in &field.detail {
-            let display_val = if val.is_empty() { "-" } else { val.as_str() };
-            lines.push(Line::from(vec![
-                Span::styled(
-                    format!("  {:<width$}", key, width = label_width),
-                    Style::default().fg(Color::White),
-                ),
-                Span::styled(display_val, Style::default().fg(Color::Green)),
-            ]));
-        }
-
-        let paragraph = Paragraph::new(lines);
-        frame.render_widget(paragraph, inner);
+        lines.push(Line::from(vec![
+            Span::styled(
+                status,
+                Style::default()
+                    .fg(status_color)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::raw("   "),
+            Span::styled(self.file_path.clone(), Style::default().fg(Color::DarkGray)),
+        ]));
+        lines.push(Line::styled(
+            if self.editing {
+                "Enter apply   Esc cancel   Ctrl+S save"
+            } else {
+                "Arrows move   Enter edit/apply   Ctrl+S save"
+            },
+            Style::default().fg(Color::DarkGray),
+        ));
+        frame.render_widget(Paragraph::new(lines), inner);
     }
 
-    pub fn mark_saved(&mut self) {
-        self.dirty = false;
-        self.save_message = Some("Saved!");
+    fn render_sections(&self, frame: &mut Frame, area: Rect) {
+        let block = Block::default()
+            .title(" Sections ")
+            .borders(Borders::ALL)
+            .border_style(self.pane_style(FocusArea::Sections));
+        let inner = block.inner(area);
+        frame.render_widget(block, area);
+        if inner.height == 0 || inner.width == 0 {
+            return;
+        }
+
+        let lines: Vec<Line> = SettingsSection::ALL
+            .iter()
+            .map(|section| {
+                let prefix = if *section == self.selected_section() {
+                    ">"
+                } else {
+                    " "
+                };
+                Line::styled(
+                    format!("{prefix} {}", section.label()),
+                    self.section_row_style(*section),
+                )
+            })
+            .collect();
+        frame.render_widget(Paragraph::new(lines), inner);
+    }
+
+    fn render_fields(&self, frame: &mut Frame, area: Rect) {
+        let block = Block::default()
+            .title(" Fields ")
+            .borders(Borders::ALL)
+            .border_style(self.pane_style(FocusArea::Fields));
+        let inner = block.inner(area);
+        frame.render_widget(block, area);
+        if inner.height == 0 || inner.width == 0 {
+            return;
+        }
+
+        let width = inner.width as usize;
+        let section = self.selected_section();
+        let lines: Vec<Line> = self
+            .section_indices(section)
+            .into_iter()
+            .filter_map(|idx| {
+                self.fields
+                    .get(idx)
+                    .map(|field| self.field_line(idx, field, width))
+            })
+            .collect();
+        frame.render_widget(Paragraph::new(lines), inner);
+    }
+
+    fn field_line(&self, idx: usize, field: &SettingsField, width: usize) -> Line<'static> {
+        let is_selected = Some(idx) == self.selected;
+        let prefix = if is_selected { ">" } else { " " };
+        let label_text = format!("{prefix} {}", field.label);
+
+        let value_text = if is_selected && self.editing {
+            format!(" {}▎ ", self.edit_buffer)
+        } else {
+            format!(" {} ", field.value)
+        };
+
+        let label_style = self.field_row_style(idx);
+        let value_style = if is_selected && self.editing {
+            Style::default()
+                .fg(Color::Black)
+                .bg(Color::Green)
+                .add_modifier(Modifier::BOLD)
+        } else if is_selected && self.focus == FocusArea::Fields {
+            label_style
+        } else {
+            Style::default().fg(Color::Green)
+        };
+
+        let used = label_text.chars().count() + value_text.chars().count();
+        let pad = width.saturating_sub(used);
+        let spaces = " ".repeat(pad);
+
+        Line::from(vec![
+            Span::styled(label_text, label_style),
+            Span::styled(spaces, label_style),
+            Span::styled(value_text, value_style),
+        ])
+    }
+}
+
+fn validate_field(key: &str, value: &str) -> Result<(), String> {
+    match key {
+        "mcp_port" => value
+            .parse::<u16>()
+            .map(|_| ())
+            .map_err(|_| "must be a valid port".into()),
+        "font_size" => match value.parse::<u16>() {
+            Ok(size) if (8..=32).contains(&size) => Ok(()),
+            _ => Err("must be between 8 and 32".into()),
+        },
+        "claude.max_budget_usd" => {
+            let trimmed = value.trim();
+            if trimmed.is_empty() || trimmed == "—" {
+                return Ok(());
+            }
+            match trimmed.parse::<f64>() {
+                Ok(n) if n > 0.0 => Ok(()),
+                _ => Err("must be a positive number or empty".into()),
+            }
+        }
+        _ => Ok(()),
     }
 }
 
@@ -200,189 +544,39 @@ impl Default for SettingsPage {
 
 impl Widget for SettingsPage {
     fn render(&mut self, frame: &mut Frame, area: Rect, _ctx: &RenderContext) {
-        // Check if selected field has detail content
-        let has_detail = self
-            .selected
-            .and_then(|i| self.fields.get(i))
-            .map(|f| !f.detail.is_empty())
-            .unwrap_or(false);
-
-        let (left_area, detail_area) = if has_detail && area.width > 60 {
-            let mid = area.width / 2;
-            let left = Rect::new(area.x, area.y, mid, area.height);
-            let right = Rect::new(area.x + mid, area.y, area.width - mid, area.height);
-            (left, Some(right))
-        } else {
-            (area, None)
-        };
-
-        let block = Block::default()
-            .title(" Settings ")
-            .borders(Borders::ALL)
-            .border_style(Style::default().fg(Color::DarkGray));
-
-        let inner = block.inner(left_area);
-        frame.render_widget(block, left_area);
-
-        if inner.height == 0 || inner.width == 0 {
+        if area.width < 40 || area.height < 10 {
+            let block = Block::default()
+                .title(" Settings ")
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(Color::DarkGray));
+            frame.render_widget(block, area);
             return;
         }
 
-        // Render detail panel
-        if let Some(detail_rect) = detail_area {
-            if let Some(field) = self.selected.and_then(|i| self.fields.get(i)) {
-                self.render_detail(frame, detail_rect, field);
-            }
-        }
+        let rows = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Length(4), Constraint::Min(6)])
+            .split(area);
 
-        let mut lines: Vec<Line> = Vec::new();
-        lines.push(Line::from(""));
+        self.render_header(frame, rows[0]);
 
-        for (i, field) in self.fields.iter().enumerate() {
-            let is_selected = self.selected == Some(i);
-            let is_editing = is_selected && self.editing;
+        let cols = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Length(16), Constraint::Min(20)])
+            .split(rows[1]);
 
-            // Label
-            let label_style = if is_selected {
-                Style::default()
-                    .fg(Color::Cyan)
-                    .add_modifier(Modifier::BOLD)
-            } else {
-                Style::default().fg(Color::White)
-            };
-
-            let padded_label = format!("  {:<width$}", field.label, width = LABEL_WIDTH);
-
-            // Value
-            let is_toggle = matches!(field.kind, FieldKind::Toggle(_));
-            let value_display = if is_editing {
-                format!("{}▎", self.edit_buffer)
-            } else if is_toggle && is_selected {
-                format!("◀ {} ▶", field.value)
-            } else {
-                field.value.clone()
-            };
-
-            let value_style = if is_editing {
-                Style::default()
-                    .fg(Color::Yellow)
-                    .add_modifier(Modifier::BOLD)
-            } else if is_selected {
-                Style::default().fg(Color::Cyan)
-            } else {
-                Style::default().fg(Color::Green)
-            };
-
-            lines.push(Line::from(vec![
-                Span::styled(padded_label, label_style),
-                Span::styled(value_display, value_style),
-            ]));
-
-            // Description
-            let desc_pad = format!("  {:<width$}", "", width = LABEL_WIDTH);
-            lines.push(Line::from(vec![
-                Span::raw(desc_pad),
-                Span::styled(field.description, Style::default().fg(Color::DarkGray)),
-            ]));
-
-            lines.push(Line::from(""));
-        }
-
-        // Status line
-        if self.dirty {
-            lines.push(Line::from(vec![
-                Span::raw("  "),
-                Span::styled(
-                    "[Save] Ctrl+S",
-                    Style::default()
-                        .fg(Color::Yellow)
-                        .add_modifier(Modifier::BOLD),
-                ),
-                Span::styled("  unsaved changes", Style::default().fg(Color::DarkGray)),
-            ]));
-        } else if let Some(msg) = self.save_message {
-            lines.push(Line::from(vec![
-                Span::raw("  "),
-                Span::styled(msg, Style::default().fg(Color::Green)),
-            ]));
-        }
-
-        // Help
-        lines.push(Line::from(""));
-        let help = if self.editing {
-            "  Enter confirm  │  Esc cancel"
-        } else {
-            "  ↑↓ select  │  Enter edit  │  Ctrl+S save"
-        };
-        lines.push(Line::styled(help, Style::default().fg(Color::DarkGray)));
-
-        // Keybindings reference
-        lines.push(Line::from(""));
-        lines.push(Line::styled(
-            "  Keybindings",
-            Style::default()
-                .fg(Color::White)
-                .add_modifier(Modifier::BOLD),
-        ));
-        lines.push(Line::from(""));
-        for (key, desc) in [
-            ("ctrl+n", "new agent"),
-            ("ctrl+b", "toggle view"),
-            ("ctrl+w", "close agent"),
-            ("ctrl+q", "quit"),
-            ("shift+click", "copy"),
-        ] {
-            lines.push(Line::from(vec![
-                Span::raw("  "),
-                Span::styled(format!("{:<14}", key), Style::default().fg(Color::Cyan)),
-                Span::styled(desc, Style::default().fg(Color::DarkGray)),
-            ]));
-        }
-
-        let paragraph = Paragraph::new(lines);
-        frame.render_widget(paragraph, inner);
+        self.render_sections(frame, cols[0]);
+        self.render_fields(frame, cols[1]);
     }
 
     fn handle_scroll(&mut self, _direction: ScrollDirection) {}
 
-    fn handle_click(&mut self, row: u16, _col: u16, _ctx: &RenderContext) -> Option<WidgetAction> {
-        // Each field takes 3 lines (label+value, description, blank), starting at line 1
-        // row 0 = blank line
-        // row 1 = field 0 label+value
-        // row 2 = field 0 description
-        // row 3 = blank
-        // row 4 = field 1 label+value
-        if row == 0 {
-            return None;
-        }
-        let field_idx = (row as usize - 1) / 3;
-        if field_idx < self.fields.len() {
-            if self.selected == Some(field_idx) && !self.editing {
-                // Second click: toggle or edit depending on kind
-                match &self.fields[field_idx].kind {
-                    FieldKind::Text => {
-                        self.editing = true;
-                        self.edit_buffer = self.fields[field_idx].value.clone();
-                    }
-                    FieldKind::Toggle(options) => {
-                        if let Some(pos) = options
-                            .iter()
-                            .position(|o| *o == self.fields[field_idx].value)
-                        {
-                            let next = (pos + 1) % options.len();
-                            self.fields[field_idx].value = options[next].clone();
-                        } else if let Some(first) = options.first() {
-                            self.fields[field_idx].value = first.clone();
-                        }
-                        self.dirty = true;
-                        self.save_message = None;
-                    }
-                }
-            } else {
-                self.selected = Some(field_idx);
-                self.editing = false;
-            }
-        }
+    fn handle_click(&mut self, _row: u16, col: u16, _ctx: &RenderContext) -> Option<WidgetAction> {
+        self.focus = if col < 16 {
+            FocusArea::Sections
+        } else {
+            FocusArea::Fields
+        };
         None
     }
 }
@@ -390,168 +584,149 @@ impl Widget for SettingsPage {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crossterm::event::KeyEventState;
+    use crossterm::event::{KeyEventKind, KeyEventState};
+    use std::time::UNIX_EPOCH;
 
-    fn make_key(code: KeyCode, modifiers: KeyModifiers) -> KeyEvent {
+    fn key(code: KeyCode, modifiers: KeyModifiers) -> KeyEvent {
         KeyEvent {
             code,
             modifiers,
-            kind: crossterm::event::KeyEventKind::Press,
+            kind: KeyEventKind::Press,
             state: KeyEventState::NONE,
         }
     }
 
-    fn page_with_field() -> SettingsPage {
+    fn sample_page() -> SettingsPage {
         let mut page = SettingsPage::new();
-        page.set_fields(vec![SettingsField {
-            label: "MCP Port",
-            key: "mcp_port",
-            value: "7850".to_string(),
-            description: "Port for MCP server",
-            kind: FieldKind::Text,
-            detail: vec![],
-        }]);
+        page.force_reload(
+            vec![
+                SettingsField {
+                    section: SettingsSection::General,
+                    label: "MCP Port",
+                    key: "mcp_port",
+                    value: "7850".into(),
+                    description: "Port",
+                    kind: FieldKind::Text,
+                    detail: vec![],
+                },
+                SettingsField {
+                    section: SettingsSection::General,
+                    label: "Font Size",
+                    key: "font_size",
+                    value: "10".into(),
+                    description: "Font",
+                    kind: FieldKind::Text,
+                    detail: vec![],
+                },
+                SettingsField {
+                    section: SettingsSection::ClaudeSettings,
+                    label: "Model",
+                    key: "claude.model",
+                    value: "default".into(),
+                    description: "Model",
+                    kind: FieldKind::Toggle(vec!["default".into(), "sonnet".into(), "opus".into()]),
+                    detail: vec![],
+                },
+            ],
+            ".auriga/settings.json".into(),
+            None,
+        );
         page
     }
 
     #[test]
-    fn new_page_has_no_selection() {
-        let page = SettingsPage::new();
-        assert!(page.selected.is_none());
-        assert!(!page.editing);
-        assert!(!page.dirty);
+    fn right_moves_focus_from_sections_to_fields() {
+        let mut page = sample_page();
+        page.focus = FocusArea::Sections;
+        page.handle_key(key(KeyCode::Right, KeyModifiers::NONE));
+        assert_eq!(page.focus, FocusArea::Fields);
+        page.handle_key(key(KeyCode::Right, KeyModifiers::NONE));
+        assert_eq!(page.focus, FocusArea::Fields);
     }
 
     #[test]
-    fn arrow_down_selects_first_field() {
-        let mut page = page_with_field();
-        page.handle_key(make_key(KeyCode::Down, KeyModifiers::NONE));
-        assert_eq!(page.selected, Some(0));
+    fn left_moves_focus_from_fields_to_sections() {
+        let mut page = sample_page();
+        page.focus = FocusArea::Fields;
+        page.handle_key(key(KeyCode::Left, KeyModifiers::NONE));
+        assert_eq!(page.focus, FocusArea::Sections);
     }
 
     #[test]
-    fn enter_starts_editing_selected_field() {
-        let mut page = page_with_field();
+    fn section_focus_moves_selected_section() {
+        let mut page = sample_page();
+        page.focus = FocusArea::Sections;
         page.selected = Some(0);
-        page.handle_key(make_key(KeyCode::Enter, KeyModifiers::NONE));
+        page.handle_key(key(KeyCode::Down, KeyModifiers::NONE));
+        assert_eq!(page.selected, Some(2));
+    }
+
+    #[test]
+    fn fields_focus_moves_within_section() {
+        let mut page = sample_page();
+        page.focus = FocusArea::Fields;
+        page.selected = Some(0);
+        page.handle_key(key(KeyCode::Down, KeyModifiers::NONE));
+        assert_eq!(page.selected, Some(1));
+    }
+
+    #[test]
+    fn enter_on_toggle_field_cycles_value() {
+        let mut page = sample_page();
+        page.focus = FocusArea::Fields;
+        page.selected = Some(2);
+        page.handle_key(key(KeyCode::Enter, KeyModifiers::NONE));
+        assert_eq!(page.fields[2].value, "sonnet");
+        assert!(page.dirty);
+    }
+
+    #[test]
+    fn enter_on_text_field_begins_edit() {
+        let mut page = sample_page();
+        page.focus = FocusArea::Fields;
+        page.selected = Some(0);
+        page.handle_key(key(KeyCode::Enter, KeyModifiers::NONE));
         assert!(page.editing);
         assert_eq!(page.edit_buffer, "7850");
     }
 
     #[test]
-    fn typing_modifies_edit_buffer() {
-        let mut page = page_with_field();
+    fn ctrl_s_commits_edit_and_saves() {
+        let mut page = sample_page();
         page.selected = Some(0);
-        page.editing = true;
-        page.edit_buffer = "785".to_string();
-        page.handle_key(make_key(KeyCode::Char('1'), KeyModifiers::NONE));
-        assert_eq!(page.edit_buffer, "7851");
-    }
-
-    #[test]
-    fn backspace_removes_last_char() {
-        let mut page = page_with_field();
-        page.selected = Some(0);
-        page.editing = true;
-        page.edit_buffer = "785".to_string();
-        page.handle_key(make_key(KeyCode::Backspace, KeyModifiers::NONE));
-        assert_eq!(page.edit_buffer, "78");
-    }
-
-    #[test]
-    fn enter_confirms_edit() {
-        let mut page = page_with_field();
-        page.selected = Some(0);
-        page.editing = true;
-        page.edit_buffer = "9000".to_string();
-        page.handle_key(make_key(KeyCode::Enter, KeyModifiers::NONE));
-        assert!(!page.editing);
-        assert_eq!(page.fields[0].value, "9000");
-        assert!(page.dirty);
-    }
-
-    #[test]
-    fn esc_cancels_edit() {
-        let mut page = page_with_field();
-        page.selected = Some(0);
-        page.editing = true;
-        page.edit_buffer = "9000".to_string();
-        page.handle_key(make_key(KeyCode::Esc, KeyModifiers::NONE));
-        assert!(!page.editing);
-        assert_eq!(page.fields[0].value, "7850"); // unchanged
-        assert!(!page.dirty);
-    }
-
-    #[test]
-    fn ctrl_s_returns_save_action_when_dirty() {
-        let mut page = page_with_field();
-        page.dirty = true;
-        let action = page.handle_key(make_key(KeyCode::Char('s'), KeyModifiers::CONTROL));
+        page.begin_edit();
+        page.edit_buffer = "9999".into();
+        let action = page.handle_key(key(KeyCode::Char('s'), KeyModifiers::CONTROL));
         assert!(matches!(action, Some(WidgetAction::SaveConfig)));
+        assert_eq!(page.fields[0].value, "9999");
     }
 
     #[test]
-    fn ctrl_s_returns_none_when_clean() {
-        let mut page = page_with_field();
-        let action = page.handle_key(make_key(KeyCode::Char('s'), KeyModifiers::CONTROL));
+    fn invalid_save_is_blocked() {
+        let mut page = sample_page();
+        page.selected = Some(0);
+        page.begin_edit();
+        page.edit_buffer = "abc".into();
+        let action = page.handle_key(key(KeyCode::Char('s'), KeyModifiers::CONTROL));
         assert!(action.is_none());
+        assert_eq!(
+            page.save_message.as_deref(),
+            Some("MCP Port: must be a valid port")
+        );
     }
 
     #[test]
-    fn mark_saved_clears_dirty() {
-        let mut page = page_with_field();
+    fn sync_from_disk_preserves_unsaved_edits() {
+        let mut page = sample_page();
         page.dirty = true;
-        page.mark_saved();
-        assert!(!page.dirty);
-        assert_eq!(page.save_message, Some("Saved!"));
-    }
-
-    #[test]
-    fn field_values_returns_pairs() {
-        let page = page_with_field();
-        let vals = page.field_values();
-        assert_eq!(vals, vec![("mcp_port", "7850")]);
-    }
-
-    fn page_with_toggle() -> SettingsPage {
-        let mut page = SettingsPage::new();
-        page.set_fields(vec![SettingsField {
-            label: "Display Mode",
-            key: "display_mode",
-            value: "native".to_string(),
-            description: "Display mode",
-            kind: FieldKind::Toggle(vec!["native".into(), "auriga".into()]),
-            detail: vec![],
-        }]);
-        page
-    }
-
-    #[test]
-    fn enter_cycles_toggle_field() {
-        let mut page = page_with_toggle();
-        page.selected = Some(0);
-        page.handle_key(make_key(KeyCode::Enter, KeyModifiers::NONE));
-        assert_eq!(page.fields[0].value, "auriga");
-        assert!(!page.editing);
+        page.last_loaded_at = Some(UNIX_EPOCH);
+        let before = page.fields[0].value.clone();
+        page.sync_from_disk(
+            vec![],
+            ".auriga/settings.json".into(),
+            Some(UNIX_EPOCH + std::time::Duration::from_secs(1)),
+        );
+        assert_eq!(page.fields[0].value, before);
         assert!(page.dirty);
-    }
-
-    #[test]
-    fn toggle_wraps_around() {
-        let mut page = page_with_toggle();
-        page.selected = Some(0);
-        page.handle_key(make_key(KeyCode::Enter, KeyModifiers::NONE));
-        assert_eq!(page.fields[0].value, "auriga");
-        page.handle_key(make_key(KeyCode::Enter, KeyModifiers::NONE));
-        assert_eq!(page.fields[0].value, "native");
-    }
-
-    #[test]
-    fn toggle_does_not_enter_edit_mode() {
-        let mut page = page_with_toggle();
-        page.selected = Some(0);
-        page.handle_key(make_key(KeyCode::Enter, KeyModifiers::NONE));
-        assert!(!page.editing);
-        assert!(page.edit_buffer.is_empty());
     }
 }

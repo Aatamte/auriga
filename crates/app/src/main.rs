@@ -346,10 +346,7 @@ fn render_keybinds_footer(frame: &mut ratatui::Frame, area: Rect) {
             .areas(area);
 
     frame.render_widget(Paragraph::new(Line::from(keybinds)), left_area);
-    frame.render_widget(
-        Paragraph::new(Span::styled(version, desc)),
-        right_area,
-    );
+    frame.render_widget(Paragraph::new(Span::styled(version, desc)), right_area);
 }
 
 fn apply_font_size(out: &mut impl std::io::Write, size: u16) {

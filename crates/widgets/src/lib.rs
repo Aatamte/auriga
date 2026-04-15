@@ -1,34 +1,22 @@
-mod agent_list;
 pub mod agent_pane;
-mod classifier_panel;
-mod classifiers_page;
-mod context_page;
 mod database_page;
-mod doctor_page;
 mod file_tree_widget;
 pub mod nav_bar;
 pub mod prompts_page;
 mod recent_activity;
 mod settings_page;
 
-pub use agent_list::AgentListWidget;
 pub use agent_pane::AgentPaneWidget;
 pub use auriga_grid::WidgetId;
-pub use classifier_panel::ClassifierPanelWidget;
-pub use classifiers_page::{
-    ClassifierDetailView, ClassifierStatusView, ClassifiersPage, LabelView,
-};
-pub use context_page::{AnnotationView, ContextMapView, ContextPage, DeepContextView};
 pub use database_page::{
     DatabasePage, DbMetadata as DbMetadataView, QueryResult as QueryResultView,
     TableInfo as TableInfoView,
 };
-pub use doctor_page::DoctorPage;
 pub use file_tree_widget::FileTreeWidget;
 pub use nav_bar::NavBarWidget;
 pub use prompts_page::{PromptsPage, SystemPromptEntry};
 pub use recent_activity::RecentActivityWidget;
-pub use settings_page::{FieldKind, SettingsField, SettingsPage};
+pub use settings_page::{FieldKind, SettingsField, SettingsPage, SettingsSection};
 
 use auriga_core::{
     AgentId, AgentStore, FileTree, FocusState, Page, ScrollDirection, TraceStore, TurnStore,
@@ -79,59 +67,42 @@ pub enum WidgetAction {
         limit: u64,
         offset: u64,
     },
-    ToggleClassifier(String),
     ToggleSystemPrompt(String),
-    ToggleContextInjection,
     DownloadSkill(String),
     DeleteSkill(String),
-    StartDoctor,
 }
 
 pub struct WidgetRegistry {
-    pub agent_list: AgentListWidget,
     pub agent_pane: AgentPaneWidget,
     pub recent_activity: RecentActivityWidget,
     pub file_tree: FileTreeWidget,
     pub nav_bar: NavBarWidget,
     pub settings_page: SettingsPage,
     pub database_page: DatabasePage,
-    pub classifiers_page: ClassifiersPage,
-    pub classifier_panel: ClassifierPanelWidget,
     pub prompts_page: PromptsPage,
-    pub context_page: ContextPage,
-    pub doctor_page: DoctorPage,
 }
 
 impl WidgetRegistry {
     pub fn new() -> Self {
         Self {
-            agent_list: AgentListWidget::new(),
             agent_pane: AgentPaneWidget::new(),
             recent_activity: RecentActivityWidget::new(),
             file_tree: FileTreeWidget::new(),
             nav_bar: NavBarWidget::new(),
             settings_page: SettingsPage::new(),
             database_page: DatabasePage::new(),
-            classifiers_page: ClassifiersPage::new(),
-            classifier_panel: ClassifierPanelWidget::new(),
             prompts_page: PromptsPage::new(),
-            context_page: ContextPage::new(),
-            doctor_page: DoctorPage::new(),
         }
     }
 
     pub fn get_mut(&mut self, id: WidgetId) -> &mut dyn Widget {
         match id {
-            WidgetId::AgentList => &mut self.agent_list,
             WidgetId::AgentPane => &mut self.agent_pane,
             WidgetId::RecentActivity => &mut self.recent_activity,
             WidgetId::FileTree => &mut self.file_tree,
             WidgetId::SettingsPage => &mut self.settings_page,
             WidgetId::DatabasePage => &mut self.database_page,
-            WidgetId::ClassifiersPage => &mut self.classifiers_page,
-            WidgetId::ClassifierPanel => &mut self.classifier_panel,
             WidgetId::PromptsPage => &mut self.prompts_page,
-            WidgetId::ContextPage => &mut self.context_page,
         }
     }
 }
@@ -234,7 +205,6 @@ mod tests {
         let registry = WidgetRegistry::new();
         // Just verify construction succeeds and get_mut works
         let mut registry = registry;
-        let _ = registry.get_mut(WidgetId::AgentList);
         let _ = registry.get_mut(WidgetId::AgentPane);
     }
 }
